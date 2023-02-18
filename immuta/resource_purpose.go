@@ -11,8 +11,8 @@ import (
 
 type PurposeInput struct {
 	Name            string `json:"name"`
-	Acknowledgement string `json:"acknowledgement"`
 	Description     string `json:"description"`
+	Acknowledgement string `json:"acknowledgement"`
 }
 
 type Purpose struct {
@@ -27,7 +27,7 @@ type Purpose struct {
 	UpdatedAt              time.Time   `json:"updatedAt"`
 }
 
-type PurposeResourceResponse struct {
+type PurposeResourceResponseV2 struct {
 	DryRun    bool `json:"dryRun"`
 	Creating  bool `json:"creating"`
 	Updating  bool `json:"updating"`
@@ -64,7 +64,7 @@ func (a *PurposeAPI) DeletePurpose(id string) (err error) {
 	return
 }
 
-func (a *PurposeAPI) UpsertPurpose(purpose PurposeInput) (purposeResponse PurposeResourceResponse, err error) {
+func (a *PurposeAPI) UpsertPurpose(purpose PurposeInput) (purposeResponse PurposeResourceResponseV2, err error) {
 	err = a.client.Post("/api/v2/purpose", "", purpose, &purposeResponse)
 	return
 }
@@ -102,7 +102,7 @@ func resourcePurposeCreate(ctx context.Context, d *schema.ResourceData, m interf
 	if acknowledgement, exists := d.GetOk("acknowledgement"); exists {
 		ack = acknowledgement.(string)
 	}
-	var purposeResponse PurposeResourceResponse
+	var purposeResponse PurposeResourceResponseV2
 
 	// Do it twice as a workaround for a bug in the API where acknowledgement not updated first time
 	for i := 0; i < 2; i++ {
