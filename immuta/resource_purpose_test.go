@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-var testResourceName = "[Test] Terraform acc test"
-var testResourceDescription = "A purpose created by a Terraform acceptance test"
-var testResourceAcknowledgement = "I will not use this purpose as it is a test artifact"
+const testResourceName = "[TF Test] Terraform acc test"
+const testResourceDescription = "A purpose created by a Terraform acceptance test"
+const testResourceAcknowledgement = "I will not use this purpose as it is a test artifact"
 
 func TestAccPurpose_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -43,4 +43,32 @@ func testAccPurposeConfig() string {
 		  acknowledgement = "%[3]s"
 	}
 `, testResourceName, testResourceDescription, testResourceAcknowledgement)
+}
+
+func TestAccPurpose_noOptionalParams(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviderFactories(&testAccProviders),
+		CheckDestroy:      testAccCheckPurposeDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccPurposeConfigNoOptionalParams(),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"immuta_purpose.test", "name", testResourceName),
+					resource.TestCheckResourceAttr(
+						"immuta_purpose.test", "description", testResourceDescription),
+				),
+			},
+		},
+	})
+}
+
+func testAccPurposeConfigNoOptionalParams() string {
+	return fmt.Sprintf(`
+	resource "immuta_purpose" "test" {
+		  name        = "%[1]s"
+		  description = "%[2]s"
+	}
+`, testResourceName, testResourceDescription)
 }
