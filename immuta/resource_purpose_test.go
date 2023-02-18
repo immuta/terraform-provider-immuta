@@ -32,7 +32,7 @@ func TestAccPurpose_basic(t *testing.T) {
 	})
 }
 
-func testAccPreCheck(t *testing.T)                        {}
+// todo this should ensure that the resource has actually been destroyed
 func testAccCheckPurposeDestroy(s *terraform.State) error { return nil }
 
 func testAccPurposeConfig() string {
