@@ -20,6 +20,10 @@ func (c *ImmutaClient) Post(path, version string, params interface{}, output int
 	return c.doRequest(http.MethodPost, path, version, nil, params, output)
 }
 
+func (c *ImmutaClient) Put(path, version string, params interface{}, output interface{}) error {
+	return c.doRequest(http.MethodPut, path, version, nil, params, output)
+}
+
 func (c *ImmutaClient) Patch(path, version string, params interface{}, output interface{}) error {
 	return c.doRequest(http.MethodPatch, path, version, nil, params, output)
 }

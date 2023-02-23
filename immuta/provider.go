@@ -23,8 +23,9 @@ func ImmutaProvider() *schema.Provider {
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"immuta_purpose": ResourcePurpose(),
-			"immuta_project": ResourceProject(),
+			"immuta_purpose":  ResourcePurpose(),
+			"immuta_project":  ResourceProject(),
+			"immuta_bim_user": ResourceBimUser(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
