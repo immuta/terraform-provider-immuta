@@ -24,7 +24,7 @@ type ProjectInput struct {
 type Project struct {
 	ProjectInput
 	Tags      []interface{} `json:"tags"`
-	Purposes  []Purpose     `json:"purposes"`
+	Purposes  []interface{} `json:"purposes"`
 	Id        int           `json:"id"`
 	Status    string        `json:"status"`
 	Deleted   bool          `json:"deleted"`
