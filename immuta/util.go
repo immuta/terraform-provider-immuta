@@ -53,7 +53,7 @@ func tfMapFromGo(ctx context.Context, m map[string]interface{}) (types.Map, diag
 	return mappedValue, nil
 }
 
-func checkIfMapHasChanged(ctx context.Context, tfMap types.Map, comparisonMap map[string]interface{}) (types.Map, diag.Diagnostics) {
+func updateMapIfChanged(ctx context.Context, tfMap types.Map, comparisonMap map[string]interface{}) (types.Map, diag.Diagnostics) {
 
 	goTfMap, diags := goMapFromTf(ctx, tfMap)
 	if diags != nil {
@@ -89,7 +89,7 @@ func tfListFromGo(ctx context.Context, l []interface{}) (types.List, diag.Diagno
 	return mappedValue, nil
 }
 
-func checkIfListHasChanged(ctx context.Context, tfList types.List, comparisonList []interface{}) (types.List, diag.Diagnostics) {
+func updateListIfChanged(ctx context.Context, tfList types.List, comparisonList []interface{}) (types.List, diag.Diagnostics) {
 
 	goTfList, diags := goListFromTf(ctx, tfList)
 	if diags != nil {

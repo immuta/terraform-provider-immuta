@@ -195,21 +195,21 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 		data.AllowMaskedJoins = types.BoolValue(project.AllowMaskedJoins)
 	}
 
-	newSubscriptionPolicy, subscriptionDiag := checkIfMapHasChanged(ctx, data.SubscriptionPolicy, project.SubscriptionPolicy)
+	newSubscriptionPolicy, subscriptionDiag := updateMapIfChanged(ctx, data.SubscriptionPolicy, project.SubscriptionPolicy)
 	if subscriptionDiag != nil {
 		resp.Diagnostics.Append(subscriptionDiag...)
 		return
 	}
 	data.SubscriptionPolicy = newSubscriptionPolicy
 
-	newTags, tagsDiag := checkIfListHasChanged(ctx, data.Tags, project.Tags)
+	newTags, tagsDiag := updateListIfChanged(ctx, data.Tags, project.Tags)
 	if tagsDiag != nil {
 		resp.Diagnostics.Append(tagsDiag...)
 		return
 	}
 	data.Tags = newTags
 
-	newPurposes, purposesDiag := checkIfListHasChanged(ctx, data.Purposes, project.Purposes)
+	newPurposes, purposesDiag := updateListIfChanged(ctx, data.Purposes, project.Purposes)
 	if purposesDiag != nil {
 		resp.Diagnostics.Append(purposesDiag...)
 		return
