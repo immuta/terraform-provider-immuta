@@ -183,6 +183,7 @@ func (r *BimUserResource) Read(ctx context.Context, req resource.ReadRequest, re
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
+// Update updates user profile details
 func (r *BimUserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data *BimUserResourceModel
 
@@ -193,8 +194,29 @@ func (r *BimUserResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	// todo
-	// Actually update the BimUser
+	if data.Name.ValueString() != "" && data.Name.ValueString() != data.Userid.ValueString() {
+		resp.Diagnostics.AddError(
+			"Error updating BimUser",
+			fmt.Sprintf("Error updating BimUser, Name cannot be changed: %s", data.Name.ValueString()),
+		)
+		return
+	}
+	if data.Name.ValueString() == "" {
+		data.Name = data.Userid
+	}
+
+	bimUserProfile := BimUserProfile{}
+	bimUserProfile.Email = data.Email.ValueString()
+	bimUserProfile.ExternalUserIds.SnowflakeUser = data.SnowflakeUser.ValueString()
+
+	_, err := r.UpdateBimUserProfile(data.Id.ValueString(), &bimUserProfile)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error updating BimUser",
+			fmt.Sprintf("Error updating BimUserProfile: %s", err),
+		)
+		return
+	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

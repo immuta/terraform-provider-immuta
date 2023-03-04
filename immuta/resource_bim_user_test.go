@@ -17,8 +17,9 @@ func TestAccBimUser_Basic(t *testing.T) {
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckBimUserDestroy,
 		Steps: []resource.TestStep{
+			// test create and read
 			{
-				Config: testAccBimUserConfigBasic(),
+				Config: testAccBimUserConfigBasic("userabc"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"immuta_bim_user.test", "userid", testBimUserId),
@@ -27,7 +28,21 @@ func TestAccBimUser_Basic(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"immuta_bim_user.test", "email", testBimUserEmail),
 					resource.TestCheckResourceAttr(
-						"immuta_bim_user.test", "snowflake_user", testBimUserId),
+						"immuta_bim_user.test", "snowflake_user", "userabc"),
+				),
+			},
+			// test update and read
+			{
+				Config: testAccBimUserConfigBasic("userxyz"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"immuta_bim_user.test", "userid", testBimUserId),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_user.test", "password", testBimUserPassword),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_user.test", "email", testBimUserEmail),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_user.test", "snowflake_user", "userxyz"),
 				),
 			},
 		},
@@ -61,13 +76,13 @@ func testAccCheckBimUserDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccBimUserConfigBasic() string {
+func testAccBimUserConfigBasic(snowflakeUser string) string {
 	return `
 	resource "immuta_bim_user" "test" {
 		  userid        = "` + testBimUserId + `"
 		  password = "` + testBimUserPassword + `"
 		  email = "` + testBimUserEmail + `"
-		  snowflake_user = "` + testBimUserId + `"	
+		  snowflake_user = "` + snowflakeUser + `"	
 	}
 `
 }
