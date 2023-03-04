@@ -233,6 +233,53 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 	// todo
 	// Actually update the Project
 
+	subscriptionPolicy := make(map[string]interface{})
+	if diags := data.SubscriptionPolicy.ElementsAs(ctx, &subscriptionPolicy, false); diags != nil {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	tags := make([]string, 0)
+	if diags := data.Tags.ElementsAs(ctx, &tags, false); diags != nil {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	purposes := make([]string, 0)
+	if diags := data.Purposes.ElementsAs(ctx, &purposes, false); diags != nil {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	project := ProjectInput{
+		Name:               data.Name.ValueString(),
+		ProjectKey:         data.ProjectKey.ValueString(),
+		Description:        data.Description.ValueString(),
+		Documentation:      data.Documentation.ValueString(),
+		AllowMaskedJoins:   data.AllowMaskedJoins.ValueBool(),
+		SubscriptionPolicy: subscriptionPolicy,
+		Tags:               tags,
+		Purposes:           purposes,
+	}
+
+	projectResponse, err := r.UpsertProject(project)
+
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error creating project",
+			fmt.Sprintf("Error creating project: %s", err),
+		)
+		return
+	}
+
+	if strconv.Itoa(projectResponse.ProjectId) != data.Id.ValueString() {
+		resp.Diagnostics.AddError(
+			"Error updating project",
+			fmt.Sprintf("Error updating project, new ID value returned - old:[%s] new:[%d]: %s", data.Id.ValueString(), projectResponse.ProjectId, err),
+		)
+		return
+	}
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

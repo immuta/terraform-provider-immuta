@@ -7,7 +7,6 @@ import (
 )
 
 const testProjectName = "[TF Test] Terraform acc test"
-const testProjectDescription = "A project created by a Terraform acceptance test"
 const testProjectDocumentation = "Test documentation"
 const testProjectKey = "test-project-key"
 
@@ -18,12 +17,26 @@ func TestAccProject_basic(t *testing.T) {
 		CheckDestroy:             testAccCheckProjectDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccProjectConfig(),
+				Config: testAccProjectConfig("desca"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"immuta_project.test", "name", testProjectName),
 					resource.TestCheckResourceAttr(
-						"immuta_project.test", "description", testProjectDescription),
+						"immuta_project.test", "description", ("desca")),
+					resource.TestCheckResourceAttr(
+						"immuta_project.test", "documentation", testProjectDocumentation),
+					resource.TestCheckResourceAttr(
+						"immuta_project.test", "project_key", testProjectKey),
+				),
+			},
+			// test update and read
+			{
+				Config: testAccProjectConfig("descb"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"immuta_project.test", "name", testProjectName),
+					resource.TestCheckResourceAttr(
+						"immuta_project.test", "description", "descb"),
 					resource.TestCheckResourceAttr(
 						"immuta_project.test", "documentation", testProjectDocumentation),
 					resource.TestCheckResourceAttr(
@@ -39,11 +52,11 @@ func testAccCheckProjectDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccProjectConfig() string {
+func testAccProjectConfig(desc string) string {
 	return `
 	resource "immuta_project" "test" {
 		  name        = "` + testProjectName + `"
-		  description = "` + testProjectDescription + `"
+		  description = "` + desc + `"
 		  documentation = "` + testProjectDocumentation + `"
 		  project_key = "` + testProjectKey + `"
 	}
