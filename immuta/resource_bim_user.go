@@ -1,13 +1,262 @@
-// Package immuta resource bim user creates an Immuta user via the bim iam provider API
 package immuta
 
 import (
 	"context"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"fmt"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/instacart/terraform-provider-immuta/client"
-	"github.com/pkg/errors"
 )
+
+// Ensure provider defined types fully satisfy framework interfaces.
+var _ resource.Resource = &BimUserResource{}
+var _ resource.ResourceWithImportState = &BimUserResource{}
+
+func NewBimUserResource() resource.Resource {
+	return &BimUserResource{}
+}
+
+// BimUserResource defines the resource implementation.
+type BimUserResource struct {
+	client *client.ImmutaClient
+}
+
+// BimUserResourceModel describes the resource data model.
+type BimUserResourceModel struct {
+	Id            types.String `tfsdk:"id"`
+	Userid        types.String `tfsdk:"userid"`
+	Password      types.String `tfsdk:"password"`
+	Name          types.String `tfsdk:"name"`
+	Email         types.String `tfsdk:"email"`
+	SnowflakeUser types.String `tfsdk:"snowflake_user"`
+}
+
+func (r *BimUserResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_bim_user"
+}
+
+func (r *BimUserResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		// This description is used by the documentation generator and the language server.
+		MarkdownDescription: "A machine generated user for programmatic access.",
+
+		Attributes: map[string]schema.Attribute{
+			"id": stringResourceId(),
+			"userid": schema.StringAttribute{
+				MarkdownDescription: "",
+				Required:            true,
+			},
+			"password": schema.StringAttribute{
+				MarkdownDescription: "",
+				Optional:            true,
+				Computed:            true,
+				Sensitive:           true,
+			},
+			"name": schema.StringAttribute{
+				MarkdownDescription: "",
+				Optional:            true,
+				Computed:            true,
+			},
+			"email": schema.StringAttribute{
+				MarkdownDescription: "",
+				Required:            true,
+			},
+			"snowflake_user": schema.StringAttribute{
+				MarkdownDescription: "",
+				Optional:            true,
+			},
+		},
+	}
+}
+
+func (r *BimUserResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	// Prevent panic if the provider has not been configured.
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*client.ImmutaClient)
+
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *client.ImmutaClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+
+		return
+	}
+
+	r.client = client
+}
+
+func (r *BimUserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data *BimUserResourceModel
+
+	// Read Terraform plan data into the model
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if data.Name.ValueString() == "" {
+		data.Name = data.Userid
+	}
+
+	bimUserInput := BimUserInput{
+		Userid:   data.Userid.ValueString(),
+		Password: data.Password.ValueString(),
+		Profile: BimUserProfileInput{
+			Name:  data.Name.ValueString(),
+			Email: data.Email.ValueString(),
+		},
+	}
+
+	bimUserResponse, err := r.CreateBimUser(bimUserInput)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error creating BimUser",
+			fmt.Sprintf("Error creating BimUser: %s", err),
+		)
+		return
+	}
+
+	if data.SnowflakeUser.ValueString() != "" {
+		bimUserProfile := BimUserProfile{}
+		bimUserProfile.ExternalUserIds.SnowflakeUser = data.SnowflakeUser.ValueString()
+
+		_, err := r.UpdateBimUserProfile(bimUserInput.Userid, &bimUserProfile)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error creating BimUserProfile",
+				fmt.Sprintf("Error updating ExternalUserIds: %s", err),
+			)
+			return
+		}
+	}
+
+	data.Id = types.StringValue(bimUserResponse.NewUser.Userid)
+
+	// Save data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *BimUserResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data *BimUserResourceModel
+
+	// Read Terraform prior state data into the model
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	bimUserResponse, err := r.GetBimUser(data.Id.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error reading BimUser",
+			fmt.Sprintf("Error reading BimUser: %s", err),
+		)
+		return
+	}
+	if bimUserResponse.Userid != data.Id.ValueString() {
+		resp.Diagnostics.AddError(
+			"Error reading BimUser",
+			fmt.Sprintf("Error reading BimUser, ID has changed, old:[%s] new:[%s]: %s", data.Id.ValueString(), bimUserResponse.Userid, err),
+		)
+		return
+	}
+
+	if data.Name.ValueString() != bimUserResponse.Profile.Name {
+		data.Name = types.StringValue(bimUserResponse.Profile.Name)
+	}
+	if data.Email.ValueString() != bimUserResponse.Profile.Email {
+		data.Email = types.StringValue(bimUserResponse.Profile.Email)
+	}
+	if data.SnowflakeUser.ValueString() != bimUserResponse.Profile.ExternalUserIds.SnowflakeUser {
+		data.SnowflakeUser = types.StringValue(bimUserResponse.Profile.ExternalUserIds.SnowflakeUser)
+	}
+
+	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *BimUserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data *BimUserResourceModel
+
+	// Read Terraform plan data into the model
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// todo
+	// Actually update the BimUser
+
+	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *BimUserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data *BimUserResourceModel
+
+	// Read Terraform prior state data into the model
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	err := r.DeleteBimUser(data.Id.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error deleting BimUser",
+			fmt.Sprintf("Error deleting BimUser: %s", err),
+		)
+		return
+	}
+}
+
+func (r *BimUserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// CRUD methods
+
+func (r *BimUserResource) ListBimUsers() (bimUserResponse *BimUser, err error) {
+	err = r.client.Get("/bim/iam/bim/user", "", map[string]string{}, &bimUserResponse)
+	return
+}
+
+func (r *BimUserResource) GetBimUser(userid string) (bimUserResponse *BimUser, err error) {
+	err = r.client.Get("/bim/iam/bim/user/"+userid, "", map[string]string{}, &bimUserResponse)
+	return
+}
+
+func (r *BimUserResource) CreateBimUser(bimUser BimUserInput) (bimUserResponse *BimUserCreateResponse, err error) {
+	err = r.client.Post("/bim/iam/bim/user", "", bimUser, &bimUserResponse)
+	return
+}
+
+func (r *BimUserResource) DeleteBimUser(userid string) (err error) {
+	err = r.client.Delete("/bim/iam/bim/user/"+userid, "", nil, nil)
+	return
+}
+
+//func (a *BimUserResource) UpdateBimUser(userid string, profile *BimUserProfile) (bimUserResponse *BimUser, err error) {
+//	err = a.client.Put("/bim/iam/bim/user/"+userid+"/profile", "", profile, &profile)
+//	return
+//}
+
+func (r *BimUserResource) UpdateBimUserProfile(userid string, profile *BimUserProfile) (bimUserResponse *BimUser, err error) {
+	err = r.client.Put("/bim/iam/bim/user/"+userid+"/profile", "", profile, &profile)
+	return
+}
+
+// Domain specific types
 
 type BimUserInput struct {
 	Userid      string              `json:"userid"`
@@ -43,184 +292,4 @@ type BimUserCreateResponse struct {
 type BimUsers struct {
 	Users []BimUser `json:"users"`
 	Count int       `json:"count"`
-}
-
-type BimUserAPI struct {
-	client *client.ImmutaClient
-}
-
-func NewBimUserAPI(client *client.ImmutaClient) *BimUserAPI {
-	return &BimUserAPI{
-		client: client,
-	}
-}
-
-func (a *BimUserAPI) ListBimUsers() (bimUserResponse *BimUser, err error) {
-	err = a.client.Get("/bim/iam/bim/user", "", map[string]string{}, &bimUserResponse)
-	return
-}
-
-func (a *BimUserAPI) GetBimUser(userid string) (bimUserResponse *BimUser, err error) {
-	err = a.client.Get("/bim/iam/bim/user/"+userid, "", map[string]string{}, &bimUserResponse)
-	return
-}
-
-func (a *BimUserAPI) CreateBimUser(bimUser *BimUserInput) (bimUserResponse *BimUserCreateResponse, err error) {
-	err = a.client.Post("/bim/iam/bim/user", "", bimUser, &bimUserResponse)
-	return
-}
-
-func (a *BimUserAPI) DeleteBimUser(userid string) (err error) {
-	err = a.client.Delete("/bim/iam/bim/user/"+userid, "", nil, nil)
-	return
-}
-
-//func (a *BimUserAPI) UpdateBimUser(userid string, profile *BimUserProfile) (bimUserResponse *BimUser, err error) {
-//	err = a.client.Put("/bim/iam/bim/user/"+userid+"/profile", "", profile, &profile)
-//	return
-//}
-
-func (a *BimUserAPI) UpdateBimUserProfile(userid string, profile *BimUserProfile) (bimUserResponse *BimUser, err error) {
-	err = a.client.Put("/bim/iam/bim/user/"+userid+"/profile", "", profile, &profile)
-	return
-}
-
-func ResourceBimUser() *schema.Resource {
-	return &schema.Resource{
-		CreateContext: resourceBimUserCreate,
-		ReadContext:   resourceBimUserRead,
-		UpdateContext: resourceBimUserUpdate,
-		DeleteContext: resourceBimUserDelete,
-
-		Schema: map[string]*schema.Schema{
-			"userid": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"password": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"name": {
-				Type:     schema.TypeString,
-				Optional: true,
-				// defaults to userid
-				Computed: true,
-			},
-			"email": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-			"snowflake_user": {
-				Type:     schema.TypeString,
-				Optional: true,
-			},
-		},
-	}
-}
-
-func resourceBimUserCreate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
-	client := m.(*client.ImmutaClient)
-	bimUserAPI := NewBimUserAPI(client)
-
-	bimUserInput := BimUserInput{}
-	bimUserInput.Userid = d.Get("userid").(string)
-	bimUserInput.Password = d.Get("password").(string)
-
-	name, nameExists := d.GetOk("name")
-	if nameExists == true {
-		bimUserInput.Profile.Name = name.(string)
-	} else {
-		bimUserInput.Profile.Name = bimUserInput.Userid
-	}
-
-	bimUserInput.Profile.Email = d.Get("email").(string)
-
-	bimUser, err := bimUserAPI.CreateBimUser(&bimUserInput)
-	if err != nil {
-		return diag.FromErr(errors.Wrap(err, "Error creating BIM user"))
-	}
-
-	if bimUser.NewUser.Userid == "" {
-		return diag.FromErr(errors.Wrap(err, "No user id in response"))
-	}
-
-	d.SetId(bimUser.NewUser.Userid)
-
-	// if name not set in resource but implied from userid, update the resource name
-	if nameExists == false {
-		d.Set("name", bimUser.NewUser.Profile.Name)
-	}
-
-	// Need to update profile after creation as cannot assign Snowflake user ID during creation
-	if snowflakeUser, exists := d.GetOk("snowflake_user"); exists == true {
-
-		bimUserProfile := BimUserProfile{}
-		bimUserProfile.ExternalUserIds.SnowflakeUser = snowflakeUser.(string)
-
-		_, err := bimUserAPI.UpdateBimUserProfile(bimUser.NewUser.Userid, &bimUserProfile)
-		if err != nil {
-			return diag.FromErr(errors.Wrap(err, "Error updating BIM user profile with snowflake ID"))
-		}
-	}
-
-	return diags
-}
-
-func resourceBimUserRead(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
-	client := m.(*client.ImmutaClient)
-	bimUserAPI := NewBimUserAPI(client)
-
-	bimUser, err := bimUserAPI.GetBimUser(d.Id())
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	d.Set("userid", bimUser.Userid)
-	d.Set("name", bimUser.Profile.Name)
-	d.Set("email", bimUser.Profile.Email)
-	d.Set("snowflake_user", bimUser.Profile.ExternalUserIds.SnowflakeUser)
-
-	return diags
-}
-
-func resourceBimUserDelete(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
-	client := m.(*client.ImmutaClient)
-	bimUserAPI := NewBimUserAPI(client)
-
-	err := bimUserAPI.DeleteBimUser(d.Id())
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	return diags
-}
-
-func resourceBimUserUpdate(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
-	client := m.(*client.ImmutaClient)
-	bimUserAPI := NewBimUserAPI(client)
-
-	bimUserProfile := BimUserProfile{}
-
-	bimUserProfile.Email = d.Get("email").(string)
-	bimUserProfile.ExternalUserIds.SnowflakeUser = d.Get("snowflake_user").(string)
-
-	if name, exists := d.GetOk("name"); exists == true {
-		bimUserProfile.Name = name.(string)
-	} else {
-		bimUserProfile.Name = d.Get("userid").(string)
-	}
-
-	bimUser, err := bimUserAPI.UpdateBimUserProfile(d.Id(), &bimUserProfile)
-	if err != nil {
-		return diag.FromErr(errors.Wrap(err, "Error updating BIM user profile."))
-	}
-
-	d.SetId(bimUser.Userid)
-
-	return diags
 }

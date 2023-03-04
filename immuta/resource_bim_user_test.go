@@ -13,18 +13,17 @@ const testBimUserPassword = "test_password"
 
 func TestAccBimUser_Basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories(&testAccProviders),
-		CheckDestroy:      testAccCheckBimUserDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckBimUserDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBimUserConfigBasic(),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"immuta_bim_user.test", "userid", testBimUserId),
-					// todo how to check for sensitive values?
-					//resource.TestCheckResourceAttr(
-					//	"immuta_bim_user.test", "password", testBimUserPassword),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_user.test", "password", testBimUserPassword),
 					resource.TestCheckResourceAttr(
 						"immuta_bim_user.test", "email", testBimUserEmail),
 					resource.TestCheckResourceAttr(
@@ -37,9 +36,9 @@ func TestAccBimUser_Basic(t *testing.T) {
 
 func TestAccBimUser_WithName(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { testAccPreCheck(t) },
-		ProviderFactories: testAccProviderFactories(&testAccProviders),
-		CheckDestroy:      testAccCheckBimUserDestroy,
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckBimUserDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccBimUserConfigWithName(),

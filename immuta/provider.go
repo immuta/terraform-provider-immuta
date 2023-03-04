@@ -8,52 +8,9 @@ import (
 	frameworkschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/instacart/terraform-provider-immuta/client"
 	"os"
 )
-
-func ImmutaProvider() *schema.Provider {
-	return &schema.Provider{
-		Schema: map[string]*schema.Schema{
-			"api_key": {
-				Type:        schema.TypeString,
-				DefaultFunc: schema.EnvDefaultFunc("IMMUTA_API_KEY", nil),
-				Description: "The API token to access the endpoint. Can be set with IMMUTA_API_KEY.",
-				Required:    true,
-			},
-			"host": {
-				Type:        schema.TypeString,
-				DefaultFunc: schema.EnvDefaultFunc("IMMUTA_HOST", nil),
-				Description: "The endpoint to use. Can be set with IMMUTA_HOST.",
-				Required:    true,
-			},
-		},
-		ResourcesMap: map[string]*schema.Resource{
-			"immuta_purpose":  ResourcePurpose(),
-			"immuta_project":  ResourceProject(),
-			"immuta_bim_user": ResourceBimUser(),
-		},
-		ConfigureContextFunc: providerConfigure,
-	}
-}
-
-func providerConfigure(ctx context.Context, d *schema.ResourceData) (client interface{}, diags diag.Diagnostics) {
-	config := Config{
-		APIKey: d.Get("api_key").(string),
-		Host:   d.Get("host").(string),
-	}
-	client, err := config.ImmutaClient()
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
-
-	return
-}
-
-////////////////////////////////////////////////
-// terraform framework version of provider
 
 // Ensure ScaffoldingProvider satisfies various provider interfaces.
 var _ provider.Provider = &Provider{}
@@ -142,5 +99,6 @@ func (p Provider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewPurposeResource,
 		NewProjectResource,
+		NewBimUserResource,
 	}
 }
