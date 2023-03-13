@@ -35,11 +35,11 @@ type PurposeResourceModel struct {
 	Subpurposes     types.List   `tfsdk:"subpurposes"`
 }
 
-func (r *PurposeResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *PurposeResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_purpose"
 }
 
-func (r *PurposeResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *PurposeResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Immuta PurposeResponse",
@@ -82,24 +82,24 @@ func (r *PurposeResource) Schema(ctx context.Context, req resource.SchemaRequest
 	}
 }
 
-func (r *PurposeResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *PurposeResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
 	}
 
-	client, ok := req.ProviderData.(*client.ImmutaClient)
+	immutaClient, ok := req.ProviderData.(*client.ImmutaClient)
 
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.ImmutaClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *immutaClient.ImmutaClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
 	}
 
-	r.client = client
+	r.client = immutaClient
 }
 
 func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -115,15 +115,26 @@ func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest
 	// Actually create the purpose
 	var purposeResponse PurposeResourceResponseV2
 
+	purposeInput := PurposeInput{
+		Purpose: Purpose{
+			Name:            data.Name.ValueString(),
+			Description:     data.Description.ValueString(),
+			Acknowledgement: data.Acknowledgement.ValueString(),
+		},
+	}
+
+	if data.Subpurposes.Elements() != nil && len(data.Subpurposes.Elements()) > 0 {
+		subpurposes := make([]Purpose, 0)
+		if diags := data.Subpurposes.ElementsAs(ctx, subpurposes, false); diags != nil && diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		purposeInput.Subpurposes = subpurposes
+	}
+
 	// Do it twice as a workaround for a bug in the API where acknowledgement not updated first time (ops are idempotent)
 	for i := 0; i < 2; i++ {
-		pr, err := r.UpsertPurpose(PurposeInput{
-			Purpose: Purpose{
-				Name:            data.Name.ValueString(),
-				Description:     data.Description.ValueString(),
-				Acknowledgement: data.Acknowledgement.ValueString(),
-			},
-		})
+		pr, err := r.UpsertPurpose(purposeInput)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Client error",
@@ -181,6 +192,17 @@ func (r *PurposeResource) Read(ctx context.Context, req resource.ReadRequest, re
 		data.Description = types.StringValue(purpose.Description)
 	}
 
+	interfaceSubpurposes := make([]interface{}, 0)
+	for _, subpurpose := range purpose.Subpurposes {
+		interfaceSubpurposes = append(interfaceSubpurposes, subpurpose)
+	}
+	newSubpurposes, subpurposesDiags := updateListIfChanged(ctx, data.Subpurposes, interfaceSubpurposes)
+	if subpurposesDiags != nil && subpurposesDiags.HasError() {
+		resp.Diagnostics.Append(subpurposesDiags...)
+		return
+	}
+	data.Subpurposes = newSubpurposes
+
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -195,13 +217,24 @@ func (r *PurposeResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	purposeResponse, err := r.UpsertPurpose(PurposeInput{
+	purposeInput := PurposeInput{
 		Purpose: Purpose{
 			Name:            data.Name.ValueString(),
 			Description:     data.Description.ValueString(),
 			Acknowledgement: data.Acknowledgement.ValueString(),
 		},
-	})
+	}
+
+	if data.Subpurposes.Elements() != nil && len(data.Subpurposes.Elements()) > 0 {
+		subpurposes := make([]Purpose, 0)
+		if diags := data.Subpurposes.ElementsAs(ctx, subpurposes, false); diags != nil && diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		purposeInput.Subpurposes = subpurposes
+	}
+
+	purposeResponse, err := r.UpsertPurpose(purposeInput)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client error",
