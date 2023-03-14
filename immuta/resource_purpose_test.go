@@ -39,12 +39,13 @@ func TestAccPurpose_basic(t *testing.T) {
 						"immuta_purpose.test", "description", testResourceDescription+" b"),
 				),
 			},
+			// todo add test if a subpurpose doesn't match the parent, it errors out
 		},
 	})
 }
 
 // todo this should ensure that the resource has actually been destroyed
-func testAccCheckPurposeDestroy(s *terraform.State) error { return nil }
+func testAccCheckPurposeDestroy(_ *terraform.State) error { return nil }
 
 func testAccPurposeConfig(descriptionAppend string) string {
 	return fmt.Sprintf(`
@@ -52,6 +53,18 @@ func testAccPurposeConfig(descriptionAppend string) string {
 		  name        = "%[1]s"
 		  description = "%[2]s %[3]s"
 		  acknowledgement = "%[4]s"
+		  subpurposes = [
+			{	
+				name = "%[1]s.subpurpose 1",
+				description = "subpurpose 1 description",
+				acknowledgement = "subpurpose 1 acknowledgement"
+			},
+			{
+				name = "%[1]s.subpurpose 2",
+				description = "subpurpose 2 description %[3]s"
+				acknowledgement = "subpurpose 2 acknowledgement"
+			},
+			]
 	}
 `, testResourceName, testResourceDescription, descriptionAppend, testResourceAcknowledgement)
 }

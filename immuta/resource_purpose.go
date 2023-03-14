@@ -103,6 +103,7 @@ func (r *PurposeResource) Configure(_ context.Context, req resource.ConfigureReq
 }
 
 func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	// todo add check that the subpurpose name is actually a subpurpose of the parent purpose
 	var data *PurposeResourceModel
 
 	// Read Terraform plan data into the model
@@ -125,7 +126,7 @@ func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest
 
 	if data.Subpurposes.Elements() != nil && len(data.Subpurposes.Elements()) > 0 {
 		subpurposes := make([]Purpose, 0)
-		if diags := data.Subpurposes.ElementsAs(ctx, subpurposes, false); diags != nil && diags.HasError() {
+		if diags := data.Subpurposes.ElementsAs(ctx, &subpurposes, false); diags != nil && diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
@@ -157,6 +158,7 @@ func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest
 }
 
 func (r *PurposeResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	// todo fix the subpurpose name construction
 	var data *PurposeResourceModel
 
 	// Read Terraform prior state data into the model
@@ -192,11 +194,7 @@ func (r *PurposeResource) Read(ctx context.Context, req resource.ReadRequest, re
 		data.Description = types.StringValue(purpose.Description)
 	}
 
-	interfaceSubpurposes := make([]interface{}, 0)
-	for _, subpurpose := range purpose.Subpurposes {
-		interfaceSubpurposes = append(interfaceSubpurposes, subpurpose)
-	}
-	newSubpurposes, subpurposesDiags := updateListIfChanged(ctx, data.Subpurposes, interfaceSubpurposes)
+	newSubpurposes, subpurposesDiags := updatePurposeListIfChanged(ctx, data.Subpurposes, purpose.Subpurposes)
 	if subpurposesDiags != nil && subpurposesDiags.HasError() {
 		resp.Diagnostics.Append(subpurposesDiags...)
 		return
@@ -227,7 +225,7 @@ func (r *PurposeResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	if data.Subpurposes.Elements() != nil && len(data.Subpurposes.Elements()) > 0 {
 		subpurposes := make([]Purpose, 0)
-		if diags := data.Subpurposes.ElementsAs(ctx, subpurposes, false); diags != nil && diags.HasError() {
+		if diags := data.Subpurposes.ElementsAs(ctx, &subpurposes, false); diags != nil && diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
@@ -286,7 +284,7 @@ func (r *PurposeResource) ListPurposes() (purposes Purposes, err error) {
 }
 
 func (r *PurposeResource) GetPurpose(id string) (purpose PurposeResponse, err error) {
-	err = r.client.Get(fmt.Sprintf("/governance/purpose/%s", id), "", nil, &purpose)
+	err = r.client.Get(fmt.Sprintf("/governance/purpose/%s", id), "", map[string]string{"includeSubpurposes": "true"}, &purpose)
 	return
 }
 
@@ -303,9 +301,9 @@ func (r *PurposeResource) UpsertPurpose(purpose PurposeInput) (purposeResponse P
 // Domain specific objects
 
 type Purpose struct {
-	Name            string `json:"name"`
-	Description     string `json:"description"`
-	Acknowledgement string `json:"acknowledgement"`
+	Name            string `json:"name" tfsdk:"name"`
+	Description     string `json:"description" tfsdk:"description"`
+	Acknowledgement string `json:"acknowledgement" tfsdk:"acknowledgement"`
 }
 
 type PurposeInput struct {

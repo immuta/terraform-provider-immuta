@@ -2,6 +2,7 @@ package immuta
 
 import (
 	"context"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/numberplanmodifier"
@@ -110,6 +111,63 @@ func updateListIfChanged(ctx context.Context, tfList types.List, comparisonList 
 
 	if !listsAreSame {
 		tfFromComparison, comparisonDiags := tfListFromGo(ctx, comparisonList)
+		if comparisonDiags != nil {
+			return types.ListNull(nil), comparisonDiags
+		}
+		return tfFromComparison, nil
+	}
+	//return types.ListNull(nil), nil
+	return tfList, nil
+}
+
+// todo turn this into a generic function?
+// Purpose specific
+
+func purposeListFromTf(ctx context.Context, l types.List) ([]Purpose, diag.Diagnostics) {
+	goObject := make([]Purpose, 0)
+	// read from the terraform data into the map
+	if diags := l.ElementsAs(ctx, &goObject, false); diags != nil {
+		return nil, diags
+	}
+	return goObject, nil
+}
+
+func purposeListFromGo(ctx context.Context, l []Purpose) (types.List, diag.Diagnostics) {
+
+	purposeTypes := map[string]attr.Type{
+		"name":            types.StringType,
+		"description":     types.StringType,
+		"acknowledgement": types.StringType,
+	}
+
+	mappedValue, diags := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: purposeTypes}, l)
+	if diags != nil {
+		return types.ListNull(nil), diags
+	}
+	return mappedValue, nil
+}
+
+func updatePurposeListIfChanged(ctx context.Context, tfList types.List, comparisonList []Purpose) (types.List, diag.Diagnostics) {
+
+	goTfList, diags := purposeListFromTf(ctx, tfList)
+	if diags != nil {
+		return types.ListNull(nil), diags
+	}
+
+	// compare two lists to see if they are equal
+
+	listsAreSame := true
+	if len(goTfList) != len(comparisonList) {
+		listsAreSame = false
+	}
+	for i := range goTfList {
+		if !reflect.DeepEqual(goTfList[i], comparisonList[i]) {
+			listsAreSame = false
+		}
+	}
+
+	if !listsAreSame {
+		tfFromComparison, comparisonDiags := purposeListFromGo(ctx, comparisonList)
 		if comparisonDiags != nil {
 			return types.ListNull(nil), comparisonDiags
 		}
