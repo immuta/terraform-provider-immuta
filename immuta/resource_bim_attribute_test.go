@@ -18,7 +18,15 @@ func TestAccBimAttribute_basic(t *testing.T) {
 				Config: testAccBimAttributeConfigBasic("tf_acc_test_key", "tf_acc_test_value"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
+						"immuta_bim_attribute.test", "iam_id", "bim"),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_attribute.test", "model_type", "user"),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_attribute.test", "model_id", testAccBimAttributeUser),
+					resource.TestCheckResourceAttr(
 						"immuta_bim_attribute.test", "key", "tf_acc_test_key"),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_attribute.test", "value", "tf_acc_test_value"),
 				),
 			},
 		},
@@ -26,7 +34,7 @@ func TestAccBimAttribute_basic(t *testing.T) {
 
 }
 
-func testAccCheckBimAttributeDestroy(s *terraform.State) error {
+func testAccCheckBimAttributeDestroy(_ *terraform.State) error {
 	return nil
 }
 
