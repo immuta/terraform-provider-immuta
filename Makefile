@@ -20,4 +20,4 @@ install: fmtcheck
 	go build -o ~/Library/Application\ Support/io.terraform/plugins/$(IMMUTA_PROVIDER_PATH)/terraform-provider-immuta -ldflags="-X $(FULL_PKG_NAME)/$(VERSION_PLACEHOLDER)=$(VERSION)"
 
 testacc: fmtcheck
-	TF_ACC=1 go test $(TEST) -v ./... -parallel 20 $(TESTARGS) -timeout 120m
+	TF_ACC=1 TF_ACC_TERRAFORM_VERSION=1.3.7 go test $(TEST) -v ./... -parallel 20 $(TESTARGS) -timeout 120m
