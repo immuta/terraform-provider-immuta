@@ -137,7 +137,7 @@ func (r *TagResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 
 	if tag == nil {
 		// Tag no longer exists, remove from state
-		resp.Diagnostics.Append(resp.State.Set(ctx, nil)...)
+		resp.State.RemoveResource(ctx)
 		return
 	}
 
@@ -156,6 +156,7 @@ func (r *TagResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	}
 
 	// todo as update not currently supported
+	resp.Diagnostics.AddError("Update not supported", "Update not supported for Tag resource")
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
