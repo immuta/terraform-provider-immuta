@@ -13,7 +13,7 @@ steps:
     command: "make bin"
 
   - label: "Upload the binary to s3://infra-releases"
-    if: "build.env('BUILDKITE_ENVIRONMENT') == 'production' && build.tag != null"
+    if: "$$BUILDKITE_ENVIRONMENT == 'production' && build.tag != null"
     command:
       - "cd releases"
       - "sha256sum -b * > SHA256SUMS"
