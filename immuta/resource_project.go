@@ -7,8 +7,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/instacart/terraform-provider-immuta/client"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -64,6 +66,7 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"documentation": schema.StringAttribute{
 				MarkdownDescription: "The markdown documentation of the project.",
 				Optional:            true,
+				Computed:            true,
 			},
 			"allow_masked_joins": schema.BoolAttribute{
 				MarkdownDescription: "Whether to allow masked joins.",
@@ -136,6 +139,10 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	if data.Documentation.ValueString() == "" {
+		data.Documentation = types.StringValue("# " + data.Name.ValueString())
+	}
+
 	project := ProjectInput{
 		Name:               data.Name.ValueString(),
 		ProjectKey:         data.ProjectKey.ValueString(),
@@ -149,9 +156,62 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 
 	projectResponse, err := r.UpsertProject(project)
 	if err != nil {
+
+		tflog.Warn(ctx, "Trying to acknowledge the project")
+
+		// try acknowledging to get around the "You must first acknowledge" error/bug
+		if strings.Contains(err.Error(), "You must first acknowledge") {
+			projectState, readErr := r.FindProject(data.Name.ValueString())
+			if readErr != nil {
+				tflog.Error(ctx, "Error getting project to acknowledge")
+				resp.Diagnostics.AddError(
+					"Error reading project",
+					fmt.Sprintf("Error reading project: %s", readErr),
+				)
+				return
+			}
+			projectState, readErr = r.GetProject(strconv.Itoa(projectState.Id))
+			if readErr != nil {
+				tflog.Error(ctx, "Error getting project to acknowledge")
+				resp.Diagnostics.AddError(
+					"Error reading project",
+					fmt.Sprintf("Error reading project: %s", readErr),
+				)
+				return
+			}
+
+			if ackError := r.AcknowledgeProject(projectState.Id, projectState.SubscriptionId); ackError != nil {
+				tflog.Error(ctx, "Error acknowledging")
+				resp.Diagnostics.AddError(
+					"Error acknowledging project",
+					fmt.Sprintf("Error acknowledging project: %s", ackError),
+				)
+			}
+		}
+
+		projectResponse, err = r.UpsertProject(project)
+
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error creating project",
+				fmt.Sprintf("Error creating project: %s", err),
+			)
+			return
+		}
+	}
+
+	projectState, err := r.GetProject(strconv.Itoa(projectResponse.ProjectId))
+	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error creating project",
-			fmt.Sprintf("Error creating project: %s", err),
+			"Error reading project",
+			fmt.Sprintf("Error reading project: %s", err),
+		)
+		return
+	}
+	if err := r.AcknowledgeProject(projectState.Id, projectState.SubscriptionId); err != nil {
+		resp.Diagnostics.AddError(
+			"Error acknowledging project",
+			fmt.Sprintf("Error acknowledging project: %s", err),
 		)
 		return
 	}
@@ -203,6 +263,7 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 	data.SubscriptionPolicy = newSubscriptionPolicy
 
+	// todo have to do the same fix here too for converting the string members
 	newTags, tagsDiag := updateListIfChanged(ctx, data.Tags, project.Tags)
 	if tagsDiag != nil {
 		resp.Diagnostics.Append(tagsDiag...)
@@ -210,7 +271,11 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 	data.Tags = newTags
 
-	newPurposes, purposesDiag := updateListIfChanged(ctx, data.Purposes, project.Purposes)
+	apiPurposeNames := make([]string, 0)
+	for _, purpose := range project.Purposes {
+		apiPurposeNames = append(apiPurposeNames, purpose.Name)
+	}
+	newPurposes, purposesDiag := updateStringListIfChanged(ctx, data.Purposes, apiPurposeNames)
 	if purposesDiag != nil {
 		resp.Diagnostics.Append(purposesDiag...)
 		return
@@ -219,6 +284,7 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 }
 
 func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -252,6 +318,10 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
+	if data.Documentation.ValueString() == "" {
+		data.Documentation = types.StringValue("# " + data.Name.ValueString())
+	}
+
 	project := ProjectInput{
 		Name:               data.Name.ValueString(),
 		ProjectKey:         data.ProjectKey.ValueString(),
@@ -266,9 +336,62 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 	projectResponse, err := r.UpsertProject(project)
 
 	if err != nil {
+
+		tflog.Warn(ctx, "Trying to acknowledge the project")
+
+		// try acknowledging to get around the "You must first acknowledge" error/bug
+		if strings.Contains(err.Error(), "You must first acknowledge") {
+			projectState, readErr := r.FindProject(data.Name.ValueString())
+			if readErr != nil {
+				tflog.Error(ctx, "Error getting project to acknowledge")
+				resp.Diagnostics.AddError(
+					"Error reading project",
+					fmt.Sprintf("Error reading project: %s", readErr),
+				)
+				return
+			}
+			projectState, readErr = r.GetProject(strconv.Itoa(projectState.Id))
+			if readErr != nil {
+				tflog.Error(ctx, "Error getting project to acknowledge")
+				resp.Diagnostics.AddError(
+					"Error reading project",
+					fmt.Sprintf("Error reading project: %s", readErr),
+				)
+				return
+			}
+
+			if ackError := r.AcknowledgeProject(projectState.Id, projectState.SubscriptionId); ackError != nil {
+				tflog.Error(ctx, "Error acknowledging project")
+				resp.Diagnostics.AddError(
+					"Error acknowledging project",
+					fmt.Sprintf("Error acknowledging project: %s", ackError),
+				)
+			}
+		}
+
+		projectResponse, err = r.UpsertProject(project)
+
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Error creating project",
+				fmt.Sprintf("Error creating project: %s", err),
+			)
+			return
+		}
+	}
+
+	projectState, err := r.GetProject(strconv.Itoa(projectResponse.ProjectId))
+	if err != nil {
 		resp.Diagnostics.AddError(
-			"Error creating project",
-			fmt.Sprintf("Error creating project: %s", err),
+			"Error reading project",
+			fmt.Sprintf("Error reading project: %s", err),
+		)
+		return
+	}
+	if err := r.AcknowledgeProject(projectState.Id, projectState.SubscriptionId); err != nil {
+		resp.Diagnostics.AddError(
+			"Error acknowledging project",
+			fmt.Sprintf("Error acknowledging project: %s", err),
 		)
 		return
 	}
@@ -295,7 +418,7 @@ func (r *ProjectResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	err := r.DeleteProject(data.Id.ValueString())
+	err := r.DeleteProject(data.ProjectKey.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting project",
@@ -316,18 +439,36 @@ func (r *ProjectResource) ListProjects() (projects Projects, err error) {
 	return
 }
 
+func (r *ProjectResource) FindProject(name string) (project Project, err error) {
+	projects := FindProjectsResponse{}
+	err = r.client.Get("/project", "", map[string]string{"searchText": name, "nameOnly": "true"}, &projects)
+	if err != nil {
+		return
+	}
+	project = projects.Hits[0]
+	return
+}
+
 func (r *ProjectResource) GetProject(id string) (project Project, err error) {
 	err = r.client.Get(fmt.Sprintf("/project/%s", id), "", nil, &project)
 	return
 }
 
-func (r *ProjectResource) DeleteProject(id string) (err error) {
-	err = r.client.Delete(fmt.Sprintf("/project/%s", id), "", nil, nil)
+func (r *ProjectResource) DeleteProject(projectKey string) (err error) {
+	err = r.client.Delete(fmt.Sprintf("/api/v2/project/%s", projectKey), "", nil, nil)
 	return
 }
 
 func (r *ProjectResource) UpsertProject(project ProjectInput) (projectResponse ProjectResourceResponseV2, err error) {
 	err = r.client.Post("/api/v2/project", "", project, &projectResponse)
+	return
+}
+
+type AcknowledgePayload struct{}
+
+func (r *ProjectResource) AcknowledgeProject(projectId int, memberId int) (err error) {
+	payload := AcknowledgePayload{}
+	err = r.client.Post(fmt.Sprintf("/project/%d/members/%d/acknowledge", projectId, memberId), "", payload, nil)
 	return
 }
 
@@ -346,13 +487,14 @@ type ProjectInput struct {
 
 type Project struct {
 	ProjectInput
-	Tags      []interface{} `json:"tags"`
-	Purposes  []interface{} `json:"purposes"`
-	Id        int           `json:"id"`
-	Status    string        `json:"status"`
-	Deleted   bool          `json:"deleted"`
-	CreatedAt time.Time     `json:"createdAt"`
-	UpdateAt  time.Time     `json:"updatedAt"`
+	Tags           []interface{} `json:"tags"`
+	Purposes       []Purpose     `json:"purposes"`
+	Id             int           `json:"id"`
+	Status         string        `json:"status"`
+	Deleted        bool          `json:"deleted"`
+	SubscriptionId int           `json:"subscriptionId"`
+	CreatedAt      time.Time     `json:"createdAt"`
+	UpdateAt       time.Time     `json:"updatedAt"`
 }
 
 type ProjectResourceResponseV2 struct {
@@ -369,4 +511,10 @@ type ProjectResourceResponseV2 struct {
 type Projects struct {
 	Projects []Project `json:"projects"`
 	Count    int       `json:"count"`
+}
+
+type FindProjectsResponse struct {
+	Hits   []Project `json:"hits"`
+	Facets struct{}  `json:"facets"`
+	Count  int       `json:"count"`
 }

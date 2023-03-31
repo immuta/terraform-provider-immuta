@@ -1,4 +1,4 @@
-package terraform_provider_immuta
+package main
 
 import (
 	"context"
@@ -24,14 +24,11 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Debug: debug,
+		Address: "registry.terraform.io/instacart/immuta",
+		Debug:   debug,
 	}
 
-	err := providerserver.Serve(
-		context.Background(),
-		immuta.NewProvider(version),
-		opts,
-	)
+	err := providerserver.Serve(context.Background(), immuta.NewProvider(version), opts)
 
 	if err != nil {
 		log.Fatal(err.Error())

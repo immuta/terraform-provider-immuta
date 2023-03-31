@@ -176,3 +176,52 @@ func updatePurposeListIfChanged(ctx context.Context, tfList types.List, comparis
 	//return types.ListNull(nil), nil
 	return tfList, nil
 }
+
+// String specific
+func stringListFromTf(ctx context.Context, l types.List) ([]string, diag.Diagnostics) {
+	goObject := make([]string, 0)
+	// read from the terraform data into the map
+	if diags := l.ElementsAs(ctx, &goObject, false); diags != nil {
+		return nil, diags
+	}
+	return goObject, nil
+}
+
+func stringListFromGo(ctx context.Context, l []string) (types.List, diag.Diagnostics) {
+
+	mappedValue, diags := types.ListValueFrom(ctx, types.StringType, l)
+	if diags != nil {
+		return types.ListNull(nil), diags
+	}
+	return mappedValue, nil
+}
+
+func updateStringListIfChanged(ctx context.Context, tfList types.List, comparisonList []string) (types.List, diag.Diagnostics) {
+
+	goTfList, diags := stringListFromTf(ctx, tfList)
+	if diags != nil {
+		return types.ListNull(nil), diags
+	}
+
+	// compare two lists to see if they are equal
+
+	listsAreSame := true
+	if len(goTfList) != len(comparisonList) {
+		listsAreSame = false
+	}
+	for i := range goTfList {
+		if !reflect.DeepEqual(goTfList[i], comparisonList[i]) {
+			listsAreSame = false
+		}
+	}
+
+	if !listsAreSame {
+		tfFromComparison, comparisonDiags := stringListFromGo(ctx, comparisonList)
+		if comparisonDiags != nil {
+			return types.ListNull(nil), comparisonDiags
+		}
+		return tfFromComparison, nil
+	}
+	//return types.ListNull(nil), nil
+	return tfList, nil
+}

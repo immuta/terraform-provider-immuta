@@ -10,6 +10,7 @@ const testProjectName = "[TF Test] Terraform acc test"
 const testProjectDocumentation = "Test documentation"
 const testProjectKey = "test-project-key"
 
+// todo add purposes and other list attributes to test
 func TestAccProject_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -59,6 +60,7 @@ func testAccProjectConfig(desc string) string {
 		  description = "` + desc + `"
 		  documentation = "` + testProjectDocumentation + `"
 		  project_key = "` + testProjectKey + `"
+          purposes = ["Test Porpoise"]
 	}
 `
 }
