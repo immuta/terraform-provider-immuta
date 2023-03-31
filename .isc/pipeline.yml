@@ -1,0 +1,23 @@
+agents:
+  queue: 2048mb-2048cpu
+
+steps:
+  - label: "Setup environment"
+    command:
+      - "export XDG_CACHE_HOME='/tmp/.cache'"
+      - "export GOPATH=\"${BUILDKITE_BUILD_CHECKOUT_PATH}/go\""
+
+  - label: "Running the Terraform Provider tests"
+    command: "make test"
+
+  - label: "Building the Terraform Provider"
+    command: "make bin"
+
+  - label: "Upload the binary to s3://infra-releases"
+    if: "build.env('BUILDKITE_ENVIRONMENT') == 'production' && build.tag != null"
+    command:
+      - "cd releases"
+      - "sha256sum -b * > SHA256SUMS"
+      - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ --acl bucket-owner-full-control"
+      - "aws s3 cp --recursive s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ s3://infra-releases/terraform-provider-immuta/latest/ --acl bucket-owner-full-control"
+
