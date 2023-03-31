@@ -1,12 +1,11 @@
 agents:
   queue: 2048mb-2048cpu
 
-steps:
-  - label: "Setup environment"
-    command:
-      - "export XDG_CACHE_HOME='/tmp/.cache'"
-      - "export GOPATH=\"${BUILDKITE_BUILD_CHECKOUT_PATH}/go\""
+env:
+  XDG_CACHE_HOME: '/tmp/.cache'
+  GOPATH: "${BUILDKITE_BUILD_CHECKOUT_PATH}/go"
 
+steps:
   - label: "Running the Terraform Provider tests"
     command: "make test"
 
