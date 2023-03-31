@@ -38,5 +38,10 @@ install-immuta-provider:
 	mkdir -p ~/Library/Application\ Support/io.terraform/plugins/$(IMMUTA_PROVIDER_PATH)/
 	tar -xf /tmp/darwin_amd64.tar.gz -C ~/Library/Application\ Support/io.terraform/plugins/$(IMMUTA_PROVIDER_PATH)/
 
+test: fmtcheck
+	go test -i $(TEST) || exit 1
+	echo $(TEST) | \
+		xargs -t -n4 go test $(TESTARGS) -timeout=30s -parallel=4
+
 testacc: fmtcheck
 	TF_ACC=1 go test $(TEST) -v ./... -parallel 20 $(TESTARGS) -timeout 120m
