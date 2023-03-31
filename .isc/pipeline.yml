@@ -3,7 +3,7 @@ agents:
 
 env:
   XDG_CACHE_HOME: '/tmp/.cache'
-  GOPATH: "${BUILDKITE_BUILD_CHECKOUT_PATH}/go"
+  GOPATH: "$${BUILDKITE_BUILD_CHECKOUT_PATH}/go"
 
 steps:
   - label: "Running the Terraform Provider tests"
