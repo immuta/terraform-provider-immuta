@@ -2,8 +2,9 @@ agents:
   queue: 2048mb-2048cpu
 
 env:
-  XDG_CACHE_HOME: '/tmp/.cache'
-  GOPATH: "$${BUILDKITE_BUILD_CHECKOUT_PATH}/go"
+  # XDG_CACHE_HOME: '/tmp/.cache'
+  # GOPATH: "$${BUILDKITE_BUILD_CHECKOUT_PATH}/go"
+  GOPATH: "/go"
 
 steps:
   - label: "Running the Terraform Provider tests"
