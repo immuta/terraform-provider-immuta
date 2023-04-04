@@ -2,8 +2,6 @@ agents:
   queue: 2048mb-2048cpu
 
 env:
-  # XDG_CACHE_HOME: '/tmp/.cache'
-  # GOPATH: "$${BUILDKITE_BUILD_CHECKOUT_PATH}/go"
   GOPATH: "/go"
   GO_BUILDER_VERSION: 1.18.3-1
 
@@ -23,7 +21,7 @@ steps:
       - *docker-plugin
 
   - label: "Upload the binary to s3://infra-releases"
-    if: "$$BUILDKITE_ENVIRONMENT == 'production' && build.tag != null"
+    if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
     command:
       - "cd releases"
       - "sha256sum -b * > SHA256SUMS"
