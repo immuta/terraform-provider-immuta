@@ -34,7 +34,7 @@ func NewProvider(version string) func() provider.Provider {
 	}
 }
 
-func (p Provider) Metadata(ctx context.Context, request provider.MetadataRequest, response *provider.MetadataResponse) {
+func (p Provider) Metadata(_ context.Context, _ provider.MetadataRequest, response *provider.MetadataResponse) {
 	response.TypeName = "immuta"
 	response.Version = p.version
 }
@@ -44,7 +44,7 @@ type ProviderModel struct {
 	Host     types.String `tfsdk:"host"`
 }
 
-func (p Provider) Schema(ctx context.Context, request provider.SchemaRequest, response *provider.SchemaResponse) {
+func (p Provider) Schema(_ context.Context, _ provider.SchemaRequest, response *provider.SchemaResponse) {
 	response.Schema = frameworkschema.Schema{
 		Attributes: map[string]frameworkschema.Attribute{
 			"api_key": frameworkschema.StringAttribute{
@@ -59,7 +59,7 @@ func (p Provider) Schema(ctx context.Context, request provider.SchemaRequest, re
 	}
 }
 
-func (p Provider) Configure(ctx context.Context, request provider.ConfigureRequest, response *provider.ConfigureResponse) {
+func (p Provider) Configure(_ context.Context, _ provider.ConfigureRequest, response *provider.ConfigureResponse) {
 	config := ProviderModel{}
 
 	apiKey := os.Getenv("IMMUTA_API_KEY")
@@ -91,14 +91,16 @@ func (p Provider) Configure(ctx context.Context, request provider.ConfigureReque
 	response.ResourceData = immutaClient
 }
 
-func (p Provider) DataSources(ctx context.Context) []func() datasource.DataSource {
+func (p Provider) DataSources(_ context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{}
 }
 
-func (p Provider) Resources(ctx context.Context) []func() resource.Resource {
+func (p Provider) Resources(_ context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewPurposeResource,
 		NewProjectResource,
 		NewBimUserResource,
+		NewTagResource,
+		NewBimAttributeResource,
 	}
 }

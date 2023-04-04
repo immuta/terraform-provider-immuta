@@ -1,0 +1,32 @@
+agents:
+  queue: 2048mb-2048cpu
+
+env:
+  GOPATH: "/go"
+  GO_BUILDER_VERSION: 1.18.3-1
+
+docker-plugin: &docker-plugin
+  docker#v5.3.0:
+    image: 143926955519.dkr.ecr.us-east-1.amazonaws.com/go-builder-1.18:$GO_BUILDER_VERSION
+
+steps:
+  - label: "Running the Terraform Provider tests"
+    command: "make test"
+    plugins:
+      - *docker-plugin
+
+  - label: "Building the Terraform Provider"
+    command: "make bin"
+    plugins:
+      - *docker-plugin
+
+  - label: "Upload the binary to s3://infra-releases"
+    if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
+    command:
+      - "cd releases"
+      - "sha256sum -b * > SHA256SUMS"
+      - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ --acl bucket-owner-full-control"
+      - "aws s3 cp --recursive s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ s3://infra-releases/terraform-provider-immuta/latest/ --acl bucket-owner-full-control"
+    plugins:
+      - *docker-plugin
+

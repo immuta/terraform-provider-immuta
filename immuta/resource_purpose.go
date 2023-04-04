@@ -32,56 +32,78 @@ type PurposeResourceModel struct {
 	Name            types.String `tfsdk:"name"`
 	Description     types.String `tfsdk:"description"`
 	Acknowledgement types.String `tfsdk:"acknowledgement"`
+	Subpurposes     types.List   `tfsdk:"subpurposes"`
 }
 
-func (r *PurposeResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *PurposeResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_purpose"
 }
 
-func (r *PurposeResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *PurposeResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
-		MarkdownDescription: "Immuta Purpose",
+		MarkdownDescription: "Immuta PurposeResponse",
 
 		Attributes: map[string]schema.Attribute{
 			"id": numberResourceId(),
 			"name": schema.StringAttribute{
-				MarkdownDescription: "Purpose name, must be unique",
+				MarkdownDescription: "PurposeResponse name, must be unique",
 				Required:            true,
 			},
 			"description": schema.StringAttribute{
-				MarkdownDescription: "Purpose description",
+				MarkdownDescription: "PurposeResponse description",
 				Optional:            true,
 			},
 			"acknowledgement": schema.StringAttribute{
 				MarkdownDescription: "Acknowledgement user must agree to before assuming purpose",
 				Optional:            true,
 			},
+			"subpurposes": schema.ListNestedAttribute{
+				MarkdownDescription: "List of subpurposes",
+				Optional:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							MarkdownDescription: "Subpurpose name, must be unique & include parent purpose name",
+							Required:            true,
+						},
+						"description": schema.StringAttribute{
+							MarkdownDescription: "Subpurpose description",
+							Optional:            true,
+						},
+						"acknowledgement": schema.StringAttribute{
+							MarkdownDescription: "Acknowledgement user must agree to before assuming subpurpose",
+							Optional:            true,
+						},
+					},
+				},
+			},
 		},
 	}
 }
 
-func (r *PurposeResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *PurposeResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
 	}
 
-	client, ok := req.ProviderData.(*client.ImmutaClient)
+	immutaClient, ok := req.ProviderData.(*client.ImmutaClient)
 
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.ImmutaClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *immutaClient.ImmutaClient, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
 		return
 	}
 
-	r.client = client
+	r.client = immutaClient
 }
 
 func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	// todo add check that the subpurpose name is actually a subpurpose of the parent purpose
 	var data *PurposeResourceModel
 
 	// Read Terraform plan data into the model
@@ -94,13 +116,26 @@ func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest
 	// Actually create the purpose
 	var purposeResponse PurposeResourceResponseV2
 
-	// Do it twice as a workaround for a bug in the API where acknowledgement not updated first time (ops are idempotent)
-	for i := 0; i < 2; i++ {
-		pr, err := r.UpsertPurpose(PurposeInput{
+	purposeInput := PurposeInput{
+		Purpose: Purpose{
 			Name:            data.Name.ValueString(),
 			Description:     data.Description.ValueString(),
 			Acknowledgement: data.Acknowledgement.ValueString(),
-		})
+		},
+	}
+
+	if data.Subpurposes.Elements() != nil && len(data.Subpurposes.Elements()) > 0 {
+		subpurposes := make([]Purpose, 0)
+		if diags := data.Subpurposes.ElementsAs(ctx, &subpurposes, false); diags != nil && diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		purposeInput.Subpurposes = subpurposes
+	}
+
+	// Do it twice as a workaround for a bug in the API where acknowledgement not updated first time (ops are idempotent)
+	for i := 0; i < 2; i++ {
+		pr, err := r.UpsertPurpose(purposeInput)
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Client error",
@@ -123,6 +158,7 @@ func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest
 }
 
 func (r *PurposeResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	// todo fix the subpurpose name construction
 	var data *PurposeResourceModel
 
 	// Read Terraform prior state data into the model
@@ -143,7 +179,7 @@ func (r *PurposeResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if strconv.Itoa(purpose.Id) != data.Id.String() {
 		resp.Diagnostics.AddError(
 			"Provider error",
-			fmt.Sprintf("Purpose returned with different ID original [%s] new [%d]", data.Id, purpose.Id),
+			fmt.Sprintf("PurposeResponse returned with different ID original [%s] new [%d]", data.Id, purpose.Id),
 		)
 		return
 	}
@@ -157,6 +193,13 @@ func (r *PurposeResource) Read(ctx context.Context, req resource.ReadRequest, re
 	if data.Description.ValueString() != purpose.Description {
 		data.Description = types.StringValue(purpose.Description)
 	}
+
+	newSubpurposes, subpurposesDiags := updatePurposeListIfChanged(ctx, data.Subpurposes, purpose.Subpurposes)
+	if subpurposesDiags != nil && subpurposesDiags.HasError() {
+		resp.Diagnostics.Append(subpurposesDiags...)
+		return
+	}
+	data.Subpurposes = newSubpurposes
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -172,11 +215,24 @@ func (r *PurposeResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	purposeResponse, err := r.UpsertPurpose(PurposeInput{
-		Name:            data.Name.ValueString(),
-		Description:     data.Description.ValueString(),
-		Acknowledgement: data.Acknowledgement.ValueString(),
-	})
+	purposeInput := PurposeInput{
+		Purpose: Purpose{
+			Name:            data.Name.ValueString(),
+			Description:     data.Description.ValueString(),
+			Acknowledgement: data.Acknowledgement.ValueString(),
+		},
+	}
+
+	if data.Subpurposes.Elements() != nil && len(data.Subpurposes.Elements()) > 0 {
+		subpurposes := make([]Purpose, 0)
+		if diags := data.Subpurposes.ElementsAs(ctx, &subpurposes, false); diags != nil && diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+		purposeInput.Subpurposes = subpurposes
+	}
+
+	purposeResponse, err := r.UpsertPurpose(purposeInput)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Client error",
@@ -187,7 +243,7 @@ func (r *PurposeResource) Update(ctx context.Context, req resource.UpdateRequest
 	if strconv.Itoa(purposeResponse.PurposeId) != data.Id.String() {
 		resp.Diagnostics.AddError(
 			"Provider error",
-			fmt.Sprintf("Purpose returned with different ID original [%s] new [%d]", data.Id, purposeResponse.PurposeId),
+			fmt.Sprintf("PurposeResponse returned with different ID original [%s] new [%d]", data.Id, purposeResponse.PurposeId),
 		)
 		return
 	}
@@ -227,8 +283,8 @@ func (r *PurposeResource) ListPurposes() (purposes Purposes, err error) {
 	return
 }
 
-func (r *PurposeResource) GetPurpose(id string) (purpose Purpose, err error) {
-	err = r.client.Get(fmt.Sprintf("/governance/purpose/%s", id), "", nil, &purpose)
+func (r *PurposeResource) GetPurpose(id string) (purpose PurposeResponse, err error) {
+	err = r.client.Get(fmt.Sprintf("/governance/purpose/%s", id), "", map[string]string{"includeSubpurposes": "true"}, &purpose)
 	return
 }
 
@@ -244,13 +300,18 @@ func (r *PurposeResource) UpsertPurpose(purpose PurposeInput) (purposeResponse P
 
 // Domain specific objects
 
-type PurposeInput struct {
-	Name            string `json:"name"`
-	Description     string `json:"description"`
-	Acknowledgement string `json:"acknowledgement"`
+type Purpose struct {
+	Name            string `json:"name" tfsdk:"name"`
+	Description     string `json:"description" tfsdk:"description"`
+	Acknowledgement string `json:"acknowledgement" tfsdk:"acknowledgement"`
 }
 
-type Purpose struct {
+type PurposeInput struct {
+	Purpose
+	Subpurposes []Purpose `json:"subpurposes,omitempty"`
+}
+
+type PurposeResponse struct {
 	PurposeInput
 	Id                     int         `json:"id"`
 	AddedByProfile         int         `json:"addedByProfile"`
@@ -270,6 +331,6 @@ type PurposeResourceResponseV2 struct {
 }
 
 type Purposes struct {
-	Purposes []Purpose `json:"purposes"`
-	Count    int       `json:"count"`
+	Purposes []PurposeResponse `json:"purposes"`
+	Count    int               `json:"count"`
 }
