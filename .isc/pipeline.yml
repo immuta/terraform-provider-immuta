@@ -29,6 +29,8 @@ steps:
       - "ls"
       - "make bin"
       - "ls"
+      - "cd releases"
+      - "ls"
       - "sha256sum -b * > SHA256SUMS"
       - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/test-build/ --acl bucket-owner-full-control"
       - "aws s3 cp --recursive s3://infra-releases/terraform-provider-immuta/test-build/ s3://infra-releases/terraform-provider-immuta/latest/ --acl bucket-owner-full-control"
