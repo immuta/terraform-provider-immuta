@@ -15,20 +15,19 @@ steps:
     plugins:
       - *docker-plugin
 
-  - group:
-    steps:
-      - label: "Building the Terraform Provider"
-        command: "make bin"
-        plugins:
-          - *docker-plugin
-    
-      - label: "Upload the binary to s3://infra-releases"
-        # if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
-        command:
-          - "cd releases"
-          - "sha256sum -b * > SHA256SUMS"
-          - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ --acl bucket-owner-full-control"
-          - "aws s3 cp --recursive s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ s3://infra-releases/terraform-provider-immuta/latest/ --acl bucket-owner-full-control"
-        plugins:
-          - *docker-plugin
+  - label: "Building the Terraform Provider"
+    command: "make bin"
+    plugins:
+      - *docker-plugin
+
+  - label: "Upload the binary to s3://infra-releases"
+    if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
+    command:
+      - "make bin"
+      - "cd releases"
+      - "sha256sum -b * > SHA256SUMS"
+      - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ --acl bucket-owner-full-control"
+      - "aws s3 cp --recursive s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ s3://infra-releases/terraform-provider-immuta/latest/ --acl bucket-owner-full-control"
+    plugins:
+      - *docker-plugin
 
