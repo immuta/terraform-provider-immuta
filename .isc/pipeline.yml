@@ -23,7 +23,7 @@ steps:
       - *docker-plugin
 
   - label: "Upload the binary to s3://infra-releases"
-    # if: "$$BUILDKITE_ENVIRONMENT == 'production' && build.tag != null"
+    if: "$$BUILDKITE_ENVIRONMENT == 'production' && build.tag != null"
     command:
       - "cd releases"
       - "sha256sum -b * > SHA256SUMS"
