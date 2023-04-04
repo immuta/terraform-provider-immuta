@@ -10,11 +10,6 @@ env:
 docker-plugin: &docker-plugin
   docker#v5.3.0:
     image: 143926955519.dkr.ecr.us-east-1.amazonaws.com/go-builder-1.18:$GO_BUILDER_VERSION
-    propagate-uid-gid: true
-    workdir: /carrot/mongoose/mongoose-ingestor
-    volumes:
-      - "./../../../carrot:/carrot"
-
 
 steps:
   - label: "Running the Terraform Provider tests"
@@ -28,7 +23,7 @@ steps:
       - *docker-plugin
 
   - label: "Upload the binary to s3://infra-releases"
-    if: "$$BUILDKITE_ENVIRONMENT == 'production' && build.tag != null"
+    # if: "$$BUILDKITE_ENVIRONMENT == 'production' && build.tag != null"
     command:
       - "cd releases"
       - "sha256sum -b * > SHA256SUMS"
