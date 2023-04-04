@@ -16,12 +16,14 @@ steps:
       - *docker-plugin
 
   - label: "Building the Terraform Provider"
+    key: "build"
     command: "make bin"
     plugins:
       - *docker-plugin
 
   - label: "Upload the binary to s3://infra-releases"
     # if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
+    depends_on: "build"
     command:
       - "echo hellothere"
       - "ls"
