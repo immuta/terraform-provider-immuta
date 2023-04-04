@@ -16,24 +16,18 @@ steps:
       - *docker-plugin
 
   - label: "Building the Terraform Provider"
-    key: "build"
     command: "make bin"
     plugins:
       - *docker-plugin
 
   - label: "Upload the binary to s3://infra-releases"
-    # if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
-    depends_on: "build"
+    if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
     command:
-      - "echo hellothere"
-      - "ls"
       - "make bin"
-      - "ls"
       - "cd releases"
-      - "ls"
       - "sha256sum -b * > SHA256SUMS"
-      - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/test-build/ --acl bucket-owner-full-control"
-      - "aws s3 cp --recursive s3://infra-releases/terraform-provider-immuta/test-build/ s3://infra-releases/terraform-provider-immuta/latest/ --acl bucket-owner-full-control"
+      - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ --acl bucket-owner-full-control"
+      - "aws s3 cp --recursive s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ s3://infra-releases/terraform-provider-immuta/latest/ --acl bucket-owner-full-control"
     plugins:
       - *docker-plugin
 
