@@ -18,18 +18,13 @@ steps:
   - group:
     steps:
       - label: "Building the Terraform Provider"
-        key: "build"
-        command:
-          - "make bin"
-          - "ls"
+        command: "make bin"
         plugins:
           - *docker-plugin
     
       - label: "Upload the binary to s3://infra-releases"
-        depends_on: "build"
         # if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
         command:
-          - "ls"
           - "cd releases"
           - "sha256sum -b * > SHA256SUMS"
           - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ --acl bucket-owner-full-control"
