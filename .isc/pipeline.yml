@@ -27,10 +27,15 @@ steps:
   - label: "Upload the binary to s3://infra-releases"
     depends_on: "build"
     # if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
+    plugins:
+      - artifacts#v1.5.0:
+          download:
+            - from: "releases/*"
+              to: "releases/"
+              step: "build"
     command:
       # - "make bin"
       - "mkdir releases"
-      - "buildkite-agent artifact download '**/*.tar.gz' releases/"
       - "ls"
       - "cd releases"
       - "sha256sum -b * > SHA256SUMS"
