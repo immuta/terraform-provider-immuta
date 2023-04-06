@@ -28,6 +28,7 @@ steps:
 
   - label: "Upload the binary to s3://infra-releases"
     depends_on: "build"
+    # Only push to releases if running in buildkite agent on tagged commit
     if: "build.env(\"CI\") != null && build.tag != null"
     command:
       - "mkdir releases"
