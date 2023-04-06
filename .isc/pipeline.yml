@@ -28,7 +28,7 @@ steps:
 
   - label: "Upload the binary to s3://infra-releases"
     depends_on: "build"
-    if: "$$CI == 'true' && $$BUILDKITE_TAG"
+    if: "$CI && $BUILDKITE_TAG"
     command:
       - "mkdir releases"
       - "buildkite-agent artifact download 'releases/*' releases/ -step build"
