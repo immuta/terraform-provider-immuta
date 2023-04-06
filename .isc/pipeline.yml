@@ -28,7 +28,8 @@ steps:
     # if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
     command:
       # - "make bin"
-      - "buildkite-agent artifact download 'releases/**' tmp/ --step build"
+      - "mkdir releases"
+      - "buildkite-agent artifact download 'releases/**' releases/ --step build"
       - "ls"
       - "cd releases"
       - "sha256sum -b * > SHA256SUMS"
