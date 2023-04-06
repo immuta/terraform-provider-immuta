@@ -25,6 +25,7 @@ steps:
       - *docker-plugin
 
   - label: "Upload the binary to s3://infra-releases"
+    depends_on: "build"
     # if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
     command:
       # - "make bin"
