@@ -28,14 +28,11 @@ steps:
 
   - label: "Upload the binary to s3://infra-releases"
     depends_on: "build"
-    # if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
+    if: "$$CI == 'true' && build.tag != null"
     command:
-      # - "make bin"
       - "mkdir releases"
       - "buildkite-agent artifact download 'releases/*' releases/ -step build"
-      - "ls"
       - "cd releases"
-      - "ls"
       - "sha256sum -b * > SHA256SUMS"
       - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ --acl bucket-owner-full-control"
       - "aws s3 cp --recursive s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ s3://infra-releases/terraform-provider-immuta/latest/ --acl bucket-owner-full-control"
