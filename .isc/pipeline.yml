@@ -13,23 +13,24 @@ docker-plugin: &docker-plugin
 
 steps:
   - label: "Running the Terraform Provider tests"
-    command: "make test"
     plugins:
       - *docker-plugin
+    command: 
+      - "make test"
 
   - label: "Building the Terraform Provider"
     key: "build"
+    plugins:
+      - *docker-plugin
     command: 
       - "make bin"
     artifact_paths:
       - "releases/**/*"
-    plugins:
-      - *docker-plugin
 
   - label: "Upload the binary to s3://infra-releases"
     depends_on: "build"
     # Only push to releases if running in buildkite agent on tagged commit
-    if: build.env("CI") != null && build.env("BUILDKITE_TAG") != null
+    if: "build.env(\"CI\") != null && build.env(\"BUILDKITE_TAG\") != null"
     command:
       - "mkdir releases"
       - "buildkite-agent artifact download 'releases/*' releases/ -step build"
