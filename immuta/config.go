@@ -6,24 +6,24 @@ import (
 )
 
 type Config struct {
-	APIKey string
-	Host   string
+	APIToken string
+	Host     string
 }
 
 func (config *Config) ImmutaClient() (interface{}, error) {
 	if config.Host == "" {
 		return nil, fmt.Errorf("no Host set")
 	}
-	if config.APIKey == "" {
+	if config.APIToken == "" {
 		return nil, fmt.Errorf("no API Key set")
 	}
 
 	userAgent := fmt.Sprintf("HashiCorp Terraform/%s (+https://www.terraform.io) Terraform Plugin SDK/%s", "immuta", "immuta")
 
-	client := client.NewClient(config.Host, config.APIKey, userAgent)
+	immutaClient := client.NewClient(config.Host, config.APIToken, userAgent)
 
 	// todo validate client once low cost API call is available
 	err := error(nil)
 
-	return client, err
+	return immutaClient, err
 }
