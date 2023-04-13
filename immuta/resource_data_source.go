@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/instacart/terraform-provider-immuta/client"
 	"strings"
 )
@@ -32,8 +33,9 @@ type DataSourceResourceModel struct {
 	ConnectionKey types.String `tfsdk:"connection_key"`
 	NameTemplate  types.Object `tfsdk:"name_template"`
 	Options       types.Object `tfsdk:"options"`
-	Owners        types.Object `tfsdk:"owners"`
-	Connection    types.Object `tfsdk:"connection"`
+	Owners        types.List   `tfsdk:"owners"`
+	// appended _details because "connection" is a reserved word in HCL
+	Connection types.Object `tfsdk:"connection_details"`
 }
 
 func (*DataSourceResourceModel) NameTemplateAttributes() map[string]attr.Type {
@@ -132,31 +134,34 @@ func (r *DataSourceResource) Schema(ctx context.Context, req resource.SchemaRequ
 						Description: "Tags to be applied to each data source ingested via the connection.",
 						ElementType: types.StringType,
 					},
-					"disableSensitiveDataDiscovery": schema.BoolAttribute{
+					"disable_sensitive_data_discovery": schema.BoolAttribute{
 						Optional:    true,
 						Description: "true|false whether to disable sensitive data discovery for the data source.",
 					},
 				},
 			},
-			"owners": schema.SingleNestedAttribute{
-				Optional:    true,
-				Description: "The owners for the data source.",
-				Attributes: map[string]schema.Attribute{
-					"type": schema.StringAttribute{
-						Required:    true,
-						Description: "The type of the owner, user or group.",
-					},
-					"name": schema.StringAttribute{
-						Required:    true,
-						Description: "The name of the owner.",
-					},
-					"iam": schema.StringAttribute{
-						Optional:    true,
-						Description: "The IAM system of the owner.",
+			"owners": schema.ListNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "The owners for the data source.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"type": schema.StringAttribute{
+							Required:    true,
+							Description: "The type of the owner, user or group.",
+						},
+						"name": schema.StringAttribute{
+							Required:    true,
+							Description: "The name of the owner.",
+						},
+						"iam": schema.StringAttribute{
+							Optional:    true,
+							Description: "The IAM system of the owner.",
+						},
 					},
 				},
 			},
-			"connection": schema.SingleNestedAttribute{
+			// appended _details because "connection" is a reserved word in HCL
+			"connection_details": schema.SingleNestedAttribute{
 				Required:    true,
 				Description: "The connection details for the data source.",
 				Attributes: map[string]schema.Attribute{
@@ -216,7 +221,7 @@ func (r *DataSourceResource) Schema(ctx context.Context, req resource.SchemaRequ
 						Optional:    true,
 						Description: "The connection string options for the data source.",
 					},
-					"ssl": schema.StringAttribute{
+					"ssl": schema.BoolAttribute{
 						Optional:    true,
 						Description: "true|false Whether or not to use SSL for the data source.",
 					},
@@ -224,7 +229,7 @@ func (r *DataSourceResource) Schema(ctx context.Context, req resource.SchemaRequ
 						Optional:    true,
 						Description: "[Snowflake] The warehouse for the ingestion.",
 					},
-					"httpPath": schema.StringAttribute{
+					"http_path": schema.StringAttribute{
 						Optional:    true,
 						Description: "[Databricks] The HTTP path for the cluster used to ingest.",
 					},
@@ -359,30 +364,35 @@ func dataSourceInputFromResourceData(ctx context.Context, data DataSourceResourc
 
 	input.ConnectionKey = data.ConnectionKey.ValueString()
 	nameTemplate := DataSourceNameTemplate{}
-	if conversionDiag := data.NameTemplate.As(ctx, nameTemplate, defaultToZeroValue()); conversionDiag.HasError() {
+	if conversionDiag := data.NameTemplate.As(ctx, &nameTemplate, basetypes.ObjectAsOptions{
+		UnhandledNullAsEmpty:    false,
+		UnhandledUnknownAsEmpty: false,
+	}); conversionDiag.HasError() {
 		return conversionDiag
 	}
+	input.NameTemplate = nameTemplate
 
 	if !data.Options.IsNull() && !data.Options.IsUnknown() {
 		options := DataSourceOptions{}
-		if conversionDiag := data.Options.As(ctx, options, defaultToZeroValue()); conversionDiag.HasError() {
+		if conversionDiag := data.Options.As(ctx, &options, defaultToZeroValue()); conversionDiag.HasError() {
 			return conversionDiag
 		}
 		input.Options = options
 	}
 
 	if !data.Owners.IsNull() && !data.Owners.IsUnknown() {
-		owners := DataSourceOwners{}
-		if conversionDiag := data.Owners.As(ctx, owners, defaultToZeroValue()); conversionDiag.HasError() {
+		var owners []DataSourceOwners
+		if conversionDiag := data.Owners.ElementsAs(ctx, &owners, false); conversionDiag.HasError() {
 			return conversionDiag
 		}
 		input.Owners = owners
 	}
 
 	connection := DataSourceConnection{}
-	if conversionDiag := data.Connection.As(ctx, connection, defaultToZeroValue()); conversionDiag.HasError() {
+	if conversionDiag := data.Connection.As(ctx, &connection, defaultToZeroValue()); conversionDiag.HasError() {
 		return conversionDiag
 	}
+	input.Connection = connection
 
 	return diags
 }
@@ -390,7 +400,7 @@ func dataSourceInputFromResourceData(ctx context.Context, data DataSourceResourc
 // CRUD methods
 
 func (r *DataSourceResource) UpsertDataSource(dataSource DataSourceInput) (dataSourceResponse DataSourceResponse, err error) {
-	err = r.client.Post("/api/v2/data", "", dataSource, &dataSourceResponse)
+	err = r.client.PostWithQuery("/api/v2/data", "", dataSource, map[string]string{"dryRun": "false"}, &dataSourceResponse)
 	return
 }
 
@@ -401,7 +411,13 @@ func (r *DataSourceResource) DeleteDataSource(connectionKey string) (err error) 
 
 func (r *DataSourceResource) ConfirmDataSourceExists(connectionKey string) (doesExist bool, err error) {
 	dataSourceResponse := DataSourceResponse{}
-	err = r.client.Delete(fmt.Sprintf("/api/v2/data/%s", connectionKey), "", map[string]string{"dryRun": "true"}, &dataSourceResponse)
+	err = r.client.DeleteWithQuery(
+		fmt.Sprintf("/api/v2/data/%s", connectionKey),
+		"",
+		nil,
+		map[string]string{"dryRun": "true"},
+		&dataSourceResponse,
+	)
 	if err != nil {
 		if strings.Contains(err.Error(), "404") {
 			return false, nil
@@ -414,37 +430,37 @@ func (r *DataSourceResource) ConfirmDataSourceExists(connectionKey string) (does
 // Domain specific types
 
 type DataSourceNameTemplate struct {
-	DataSourceFormat        string `json:"dataSourceFormat"`
-	TableFormat             string `json:"tableFormat"`
-	SchemaFormat            string `json:"schemaFormat"`
-	SchemaProjectNameFormat string `json:"schemaProjectNameFormat"`
+	DataSourceFormat        string `json:"dataSourceFormat" tfsdk:"data_source_format"`
+	TableFormat             string `json:"tableFormat" tfsdk:"table_format"`
+	SchemaFormat            string `json:"schemaFormat" tfsdk:"schema_format"`
+	SchemaProjectNameFormat string `json:"schemaProjectNameFormat" tfsdk:"schema_project_name_format"`
 }
 
 type DataSourceOptions struct {
-	TableTags                     []string `json:"tableTags,omitempty"`
-	DisableSensitiveDataDiscovery bool     `json:"disableSensitiveDataDiscovery,omitempty"`
+	TableTags                     []string `json:"tableTags,omitempty" tfsdk:"table_tags"`
+	DisableSensitiveDataDiscovery bool     `json:"disableSensitiveDataDiscovery,omitempty" tfsdk:"disable_sensitive_data_discovery"`
 }
 
 type DataSourceOwners struct {
-	Type string `json:"type"`
-	Name string `json:"name"`
-	Iam  string `json:"iam,omitempty"`
+	Type string `json:"type" tfsdk:"type"`
+	Name string `json:"name" tfsdk:"name"`
+	Iam  string `json:"iam,omitempty" tfsdk:"iam"`
 }
 
 type DataSourceConnection struct {
-	Handler                 string      `json:"handler"`
-	Hostname                string      `json:"hostname"`
-	Port                    int         `json:"port,omitempty"`
-	Database                string      `json:"database"`
-	Schema                  string      `json:"schema,omitempty"`
-	Username                string      `json:"username"`
-	AuthenticationMethod    string      `json:"authenticationMethod,omitempty"`
-	Password                string      `json:"password,omitempty"`
-	UserFiles               []UserFiles `json:"userFiles,omitempty"`
-	ConnectionStringOptions string      `json:"connectionStringOptions,omitempty"`
-	Ssl                     bool        `json:"ssl,omitempty"`
-	Warehouse               string      `json:"warehouse,omitempty"`
-	HttpPath                string      `json:"httpPath,omitempty"`
+	Handler                 string      `json:"handler" tfsdk:"handler"`
+	Hostname                string      `json:"hostname" tfsdk:"hostname"`
+	Port                    int         `json:"port,omitempty" tfsdk:"port"`
+	Database                string      `json:"database" tfsdk:"database"`
+	Schema                  string      `json:"schema,omitempty" tfsdk:"schema"`
+	Username                string      `json:"username" tfsdk:"username"`
+	AuthenticationMethod    string      `json:"authenticationMethod,omitempty" tfsdk:"authentication_method"`
+	Password                string      `json:"password,omitempty" tfsdk:"password"`
+	UserFiles               []UserFiles `json:"userFiles,omitempty" tfsdk:"user_files"`
+	ConnectionStringOptions string      `json:"connectionStringOptions,omitempty" tfsdk:"connection_string_options"`
+	Ssl                     bool        `json:"ssl,omitempty" tfsdk:"ssl"`
+	Warehouse               string      `json:"warehouse,omitempty" tfsdk:"warehouse"`
+	HttpPath                string      `json:"httpPath,omitempty" tfsdk:"http_path"`
 }
 
 type UserFiles struct {
@@ -457,7 +473,7 @@ type DataSourceInput struct {
 	ConnectionKey string                 `json:"connectionKey"`
 	NameTemplate  DataSourceNameTemplate `json:"nameTemplate"`
 	Options       DataSourceOptions      `json:"options,omitempty"`
-	Owners        DataSourceOwners       `json:"owners,omitempty"`
+	Owners        []DataSourceOwners     `json:"owners,omitempty"`
 	Connection    DataSourceConnection   `json:"connection"`
 }
 
