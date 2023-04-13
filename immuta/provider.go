@@ -47,8 +47,8 @@ type ProviderModel struct {
 func (p Provider) Schema(_ context.Context, _ provider.SchemaRequest, response *provider.SchemaResponse) {
 	response.Schema = frameworkschema.Schema{
 		Attributes: map[string]frameworkschema.Attribute{
-			"api_key": frameworkschema.StringAttribute{
-				Description: "The API key to access the endpoint. Can be set with IMMUTA_API_KEY.",
+			"api_token": frameworkschema.StringAttribute{
+				Description: "The API key to access the endpoint. Can be set with IMMUTA_API_TOKEN.",
 				Optional:    true,
 			},
 			"host": frameworkschema.StringAttribute{
@@ -62,18 +62,18 @@ func (p Provider) Schema(_ context.Context, _ provider.SchemaRequest, response *
 func (p Provider) Configure(_ context.Context, _ provider.ConfigureRequest, response *provider.ConfigureResponse) {
 	config := ProviderModel{}
 
-	apiKey := os.Getenv("IMMUTA_API_KEY")
+	apiToken := os.Getenv("IMMUTA_API_TOKEN")
 	host := os.Getenv("IMMUTA_HOST")
 
 	if config.ApiToken.ValueString() != "" {
-		apiKey = config.ApiToken.ValueString()
+		apiToken = config.ApiToken.ValueString()
 	}
 
 	if config.Host.ValueString() != "" {
 		host = config.Host.ValueString()
 	}
 
-	if apiKey == "" {
+	if apiToken == "" {
 		response.Diagnostics.AddError("api_token is required", "api_token is required")
 	}
 
@@ -83,7 +83,7 @@ func (p Provider) Configure(_ context.Context, _ provider.ConfigureRequest, resp
 
 	userAgent := fmt.Sprintf("HashiCorp Terraform/%s (+https://www.terraform.io) Terraform Plugin SDK/%s", "immuta", "immuta")
 
-	immutaClient := client.NewClient(host, apiKey, userAgent)
+	immutaClient := client.NewClient(host, apiToken, userAgent)
 
 	// todo validate client once low cost API call is available
 

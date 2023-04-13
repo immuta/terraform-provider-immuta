@@ -7,22 +7,33 @@ env:
 
 docker-plugin: &docker-plugin
   docker#v5.3.0:
+    mount-docker-agent: true
+    propagate-aws-auth-tokens: true
     image: 143926955519.dkr.ecr.us-east-1.amazonaws.com/go-builder-1.18:$GO_BUILDER_VERSION
 
 steps:
   - label: "Running the Terraform Provider tests"
-    command: "make test"
     plugins:
       - *docker-plugin
+    command: 
+      - "make test"
 
   - label: "Building the Terraform Provider"
-    command: "make bin"
+    key: "build"
     plugins:
       - *docker-plugin
+    command: 
+      - "make bin"
+    artifact_paths:
+      - "releases/**/*"
 
   - label: "Upload the binary to s3://infra-releases"
-    if: "$$BUILDKITE_BRANCH == 'master' && build.tag != null"
+    depends_on: "build"
+    # Only push to releases if running in buildkite agent on tagged commit
+    if: build.tag != null
     command:
+      - "mkdir releases"
+      - "buildkite-agent artifact download 'releases/*' releases/ -step build"
       - "cd releases"
       - "sha256sum -b * > SHA256SUMS"
       - "aws s3 sync . s3://infra-releases/terraform-provider-immuta/${BUILDKITE_TAG}/ --acl bucket-owner-full-control"
