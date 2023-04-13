@@ -104,7 +104,7 @@ func (r *DataSourceResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Description: "The connection string key, must be unique.",
 			},
 			"name_template": schema.SingleNestedAttribute{
-				Required:    true,
+				Optional:    true,
 				Description: "The name template for the data source.",
 				Attributes: map[string]schema.Attribute{
 					"data_source_format": schema.StringAttribute{
@@ -471,7 +471,7 @@ type UserFiles struct {
 
 type DataSourceInput struct {
 	ConnectionKey string                 `json:"connectionKey"`
-	NameTemplate  DataSourceNameTemplate `json:"nameTemplate"`
+	NameTemplate  DataSourceNameTemplate `json:"nameTemplate,omitempty"`
 	Options       DataSourceOptions      `json:"options,omitempty"`
 	Owners        []DataSourceOwners     `json:"owners,omitempty"`
 	Connection    DataSourceConnection   `json:"connection"`
