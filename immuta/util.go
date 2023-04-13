@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"math/big"
 	"reflect"
 )
@@ -35,6 +36,13 @@ func numberResourceId() schema.NumberAttribute {
 
 func intToNumberValue(i int) types.Number {
 	return types.NumberValue(big.NewFloat(float64(i)))
+}
+
+func defaultToZeroValue() basetypes.ObjectAsOptions {
+	return basetypes.ObjectAsOptions{
+		UnhandledNullAsEmpty:    true,
+		UnhandledUnknownAsEmpty: true,
+	}
 }
 
 func goMapFromTf(ctx context.Context, m types.Map) (map[string]interface{}, diag.Diagnostics) {
