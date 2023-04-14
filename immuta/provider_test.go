@@ -18,7 +18,7 @@ var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServe
 
 func testAccPreCheck(t *testing.T) {
 	if os.Getenv("IMMUTA_API_TOKEN") == "" {
-		t.Fatal("Immuta API key must be set for acceptance tests")
+		t.Fatal("Immuta API token must be set for acceptance tests")
 	}
 
 	endpoint := os.Getenv("IMMUTA_HOST")

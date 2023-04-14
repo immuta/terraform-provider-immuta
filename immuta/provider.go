@@ -102,5 +102,6 @@ func (p Provider) Resources(_ context.Context) []func() resource.Resource {
 		NewBimUserResource,
 		NewTagResource,
 		NewBimAttributeResource,
+		NewDataSourceResource,
 	}
 }

@@ -20,6 +20,10 @@ func (c *ImmutaClient) Post(path, version string, params interface{}, output int
 	return c.doRequest(http.MethodPost, path, version, nil, params, output)
 }
 
+func (c *ImmutaClient) PostWithQuery(path, version string, params interface{}, query map[string]string, output interface{}) error {
+	return c.doRequest(http.MethodPost, path, version, query, params, output)
+}
+
 func (c *ImmutaClient) Put(path, version string, params interface{}, output interface{}) error {
 	return c.doRequest(http.MethodPut, path, version, nil, params, output)
 }
@@ -30,6 +34,10 @@ func (c *ImmutaClient) Patch(path, version string, params interface{}, output in
 
 func (c *ImmutaClient) Delete(path, version string, params interface{}, output interface{}) error {
 	return c.doRequest(http.MethodDelete, path, version, nil, params, output)
+}
+
+func (c *ImmutaClient) DeleteWithQuery(path, version string, params interface{}, query map[string]string, output interface{}) error {
+	return c.doRequest(http.MethodDelete, path, version, query, params, output)
 }
 
 func (c *ImmutaClient) doRequest(method string, path string, version string, query map[string]string, params interface{}, output interface{}) error {
