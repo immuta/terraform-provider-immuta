@@ -59,8 +59,10 @@ func (p Provider) Schema(_ context.Context, _ provider.SchemaRequest, response *
 	}
 }
 
-func (p Provider) Configure(_ context.Context, _ provider.ConfigureRequest, response *provider.ConfigureResponse) {
+func (p Provider) Configure(ctx context.Context, request provider.ConfigureRequest, response *provider.ConfigureResponse) {
 	config := ProviderModel{}
+
+	response.Diagnostics.Append(request.Config.Get(ctx, &config)...)
 
 	apiToken := os.Getenv("IMMUTA_API_TOKEN")
 	host := os.Getenv("IMMUTA_HOST")
