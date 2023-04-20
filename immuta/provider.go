@@ -3,13 +3,14 @@ package immuta
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	frameworkschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/instacart/terraform-provider-immuta/client"
-	"os"
 )
 
 // Ensure ScaffoldingProvider satisfies various provider interfaces.
@@ -105,5 +106,6 @@ func (p Provider) Resources(_ context.Context) []func() resource.Resource {
 		NewTagResource,
 		NewBimAttributeResource,
 		NewDataSourceResource,
+		NewBimGroupResource,
 	}
 }
