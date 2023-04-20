@@ -280,5 +280,5 @@ type BimGroup struct {
 	Id             int                    `json:"id"`
 	Authorizations map[string]interface{} `json:"authorizations,omitempty"`
 	CreatedAt      time.Time              `json:"createdAt"`
-	UpdateAt       time.Time              `json:"updatedAt"`
+	UpdatedAt      time.Time              `json:"updatedAt"`
 }
