@@ -263,7 +263,6 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 	data.SubscriptionPolicy = newSubscriptionPolicy
 
-	// todo have to do the same fix here too for converting the string members
 	apiTags := make([]string, 0)
 	for _, tag := range project.Tags {
 		apiTags = append(apiTags, tag.Name)
