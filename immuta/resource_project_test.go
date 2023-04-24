@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-const testProjectName = "[TF Test] Terraform acc test"
+const testProjectName = "[TF Test] TF acc test"
 const testProjectDocumentation = "Test documentation"
-const testProjectKey = "test-project-key"
+const testProjectKey = "tf-test-project-key"
 
 // todo add purposes and other list attributes to test
 func TestAccProject_basic(t *testing.T) {
