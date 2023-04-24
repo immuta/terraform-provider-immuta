@@ -157,7 +157,7 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	projectResponse, err := r.UpsertProject(project)
 	if err != nil {
 
-		tflog.Warn(ctx, "Trying to acknowledge the project")
+		tflog.Warn(ctx, "Trying to acknowledge purposes for the project")
 
 		// try acknowledging to get around the "You must first acknowledge" error/bug
 		if strings.Contains(err.Error(), "You must first acknowledge") {
@@ -341,7 +341,7 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	if err != nil {
 
-		tflog.Warn(ctx, "Trying to acknowledge the project")
+		tflog.Warn(ctx, "Trying to acknowledge purposes for the project")
 
 		// try acknowledging to get around the "You must first acknowledge" error/bug
 		if strings.Contains(err.Error(), "You must first acknowledge") {
