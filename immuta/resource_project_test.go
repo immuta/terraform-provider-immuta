@@ -49,7 +49,7 @@ func TestAccProject_basic(t *testing.T) {
 }
 
 // todo this should ensure that the resource has actually been destroyed
-func testAccCheckProjectDestroy(s *terraform.State) error {
+func testAccCheckProjectDestroy(_ *terraform.State) error {
 	return nil
 }
 
