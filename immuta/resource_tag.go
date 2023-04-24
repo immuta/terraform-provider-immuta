@@ -245,6 +245,16 @@ type TagSingular struct {
 	Name string `json:"name"`
 }
 
+type Tag struct {
+	Id          int    `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Source      string `json:"source"`
+	Context     string `json:"context"`
+	AddedBy     int    `json:"addedBy"`
+	Deleted     bool   `json:"deleted"`
+}
+
 type RootTag struct {
 	Name            string `json:"name,omitempty"`
 	DeleteHierarchy bool   `json:"deleteHierarchy,omitempty"`

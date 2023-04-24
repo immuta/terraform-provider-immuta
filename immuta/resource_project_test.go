@@ -61,6 +61,7 @@ func testAccProjectConfig(desc string) string {
 		  documentation = "` + testProjectDocumentation + `"
 		  project_key = "` + testProjectKey + `"
           purposes = ["Test Porpoise"]
+		  tags = ["tf_acc_test"]
 	}
 `
 }

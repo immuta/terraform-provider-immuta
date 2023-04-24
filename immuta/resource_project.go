@@ -264,7 +264,11 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	data.SubscriptionPolicy = newSubscriptionPolicy
 
 	// todo have to do the same fix here too for converting the string members
-	newTags, tagsDiag := updateListIfChanged(ctx, data.Tags, project.Tags)
+	apiTags := make([]string, 0)
+	for _, tag := range project.Tags {
+		apiTags = append(apiTags, tag.Name)
+	}
+	newTags, tagsDiag := updateStringListIfChanged(ctx, data.Tags, apiTags)
 	if tagsDiag != nil {
 		resp.Diagnostics.Append(tagsDiag...)
 		return
@@ -487,14 +491,14 @@ type ProjectInput struct {
 
 type Project struct {
 	ProjectInput
-	Tags           []interface{} `json:"tags"`
-	Purposes       []Purpose     `json:"purposes"`
-	Id             int           `json:"id"`
-	Status         string        `json:"status"`
-	Deleted        bool          `json:"deleted"`
-	SubscriptionId int           `json:"subscriptionId"`
-	CreatedAt      time.Time     `json:"createdAt"`
-	UpdateAt       time.Time     `json:"updatedAt"`
+	Tags           []Tag     `json:"tags"`
+	Purposes       []Purpose `json:"purposes"`
+	Id             int       `json:"id"`
+	Status         string    `json:"status"`
+	Deleted        bool      `json:"deleted"`
+	SubscriptionId int       `json:"subscriptionId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdateAt       time.Time `json:"updatedAt"`
 }
 
 type ProjectResourceResponseV2 struct {
