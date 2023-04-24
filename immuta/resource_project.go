@@ -40,11 +40,11 @@ type ProjectResourceModel struct {
 	Purposes           types.List   `tfsdk:"purposes"`
 }
 
-func (r *ProjectResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (r *ProjectResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_project"
 }
 
-func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *ProjectResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		// This description is used by the documentation generator and the language server.
 		MarkdownDescription: "Immuta project.",
@@ -91,7 +91,7 @@ func (r *ProjectResource) Schema(ctx context.Context, req resource.SchemaRequest
 	}
 }
 
-func (r *ProjectResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *ProjectResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -157,7 +157,7 @@ func (r *ProjectResource) Create(ctx context.Context, req resource.CreateRequest
 	projectResponse, err := r.UpsertProject(project)
 	if err != nil {
 
-		tflog.Warn(ctx, "Trying to acknowledge the project")
+		tflog.Warn(ctx, "Trying to acknowledge purposes for the project")
 
 		// try acknowledging to get around the "You must first acknowledge" error/bug
 		if strings.Contains(err.Error(), "You must first acknowledge") {
@@ -263,8 +263,11 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	}
 	data.SubscriptionPolicy = newSubscriptionPolicy
 
-	// todo have to do the same fix here too for converting the string members
-	newTags, tagsDiag := updateListIfChanged(ctx, data.Tags, project.Tags)
+	apiTags := make([]string, 0)
+	for _, tag := range project.Tags {
+		apiTags = append(apiTags, tag.Name)
+	}
+	newTags, tagsDiag := updateStringListIfChanged(ctx, data.Tags, apiTags)
 	if tagsDiag != nil {
 		resp.Diagnostics.Append(tagsDiag...)
 		return
@@ -337,7 +340,7 @@ func (r *ProjectResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	if err != nil {
 
-		tflog.Warn(ctx, "Trying to acknowledge the project")
+		tflog.Warn(ctx, "Trying to acknowledge purposes for the project")
 
 		// try acknowledging to get around the "You must first acknowledge" error/bug
 		if strings.Contains(err.Error(), "You must first acknowledge") {
@@ -487,14 +490,14 @@ type ProjectInput struct {
 
 type Project struct {
 	ProjectInput
-	Tags           []interface{} `json:"tags"`
-	Purposes       []Purpose     `json:"purposes"`
-	Id             int           `json:"id"`
-	Status         string        `json:"status"`
-	Deleted        bool          `json:"deleted"`
-	SubscriptionId int           `json:"subscriptionId"`
-	CreatedAt      time.Time     `json:"createdAt"`
-	UpdateAt       time.Time     `json:"updatedAt"`
+	Tags           []Tag     `json:"tags"`
+	Purposes       []Purpose `json:"purposes"`
+	Id             int       `json:"id"`
+	Status         string    `json:"status"`
+	Deleted        bool      `json:"deleted"`
+	SubscriptionId int       `json:"subscriptionId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdateAt       time.Time `json:"updatedAt"`
 }
 
 type ProjectResourceResponseV2 struct {

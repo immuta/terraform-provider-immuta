@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-const testProjectName = "[TF Test] Terraform acc test"
+const testProjectName = "[TF Test] TF acc test"
 const testProjectDocumentation = "Test documentation"
-const testProjectKey = "test-project-key"
+const testProjectKey = "tf-test-project-key"
 
 // todo add purposes and other list attributes to test
 func TestAccProject_basic(t *testing.T) {
@@ -49,7 +49,7 @@ func TestAccProject_basic(t *testing.T) {
 }
 
 // todo this should ensure that the resource has actually been destroyed
-func testAccCheckProjectDestroy(s *terraform.State) error {
+func testAccCheckProjectDestroy(_ *terraform.State) error {
 	return nil
 }
 
@@ -61,6 +61,7 @@ func testAccProjectConfig(desc string) string {
 		  documentation = "` + testProjectDocumentation + `"
 		  project_key = "` + testProjectKey + `"
           purposes = ["Test Porpoise"]
+		  tags = ["tf_acc_test"]
 	}
 `
 }
