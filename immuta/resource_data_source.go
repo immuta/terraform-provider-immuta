@@ -196,6 +196,7 @@ func (r *DataSourceResource) Schema(ctx context.Context, req resource.SchemaRequ
 					"password": schema.StringAttribute{
 						Optional:    true,
 						Description: "The password for the data source.",
+						Sensitive:   true,
 					},
 					"user_files": schema.ListNestedAttribute{
 						Optional:    true,
@@ -209,6 +210,7 @@ func (r *DataSourceResource) Schema(ctx context.Context, req resource.SchemaRequ
 								"content": schema.StringAttribute{
 									Required:    true,
 									Description: "The base64 encoded content of the user file.",
+									Sensitive:   true,
 								},
 								"file_name": schema.StringAttribute{
 									Required:    true,
