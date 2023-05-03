@@ -23,7 +23,7 @@ func NewBimGroupUsersResource() resource.Resource {
 	return &BimGroupUsersResource{}
 }
 
-// BimGroupUserResource defines the resource implementation.
+// BimGroupUsersResource defines the resource implementation.
 type BimGroupUsersResource struct {
 	client *client.ImmutaClient
 }
