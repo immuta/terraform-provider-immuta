@@ -31,7 +31,7 @@ type BimGroupUsersResource struct {
 type BimGroupUsersResourceModel struct {
 	// https://documentation.immuta.com/SaaS/policy-as-code/v1-api/configure/bim/#remove-a-user-or-groups-attribute
 	Id    types.Number `tfsdk:"id"`
-	Users types.List   `tfsdk:"users"`
+	Users types.Set    `tfsdk:"users"`
 }
 
 type UserAttribute struct {
@@ -53,7 +53,7 @@ func (r *BimGroupUsersResource) Schema(ctx context.Context, req resource.SchemaR
 
 		Attributes: map[string]schema.Attribute{
 			"id": numberResourceId(), // we use the group id as the resource id
-			"users": schema.ListNestedAttribute{
+			"users": schema.SetNestedAttribute{
 				MarkdownDescription: "The list of users within the group.",
 				Required:            true,
 				NestedObject: schema.NestedAttributeObject{
@@ -62,7 +62,10 @@ func (r *BimGroupUsersResource) Schema(ctx context.Context, req resource.SchemaR
 							Required:    true,
 							Description: "Group Id",
 						},
-						"id": numberResourceId(),
+						"id": schema.NumberAttribute{
+							Computed:            true,
+							MarkdownDescription: "Terraform resource identifier",
+						},
 						"userid": schema.StringAttribute{
 							Required:    true,
 							Description: "The user's ID",
@@ -150,15 +153,15 @@ func (r *BimGroupUsersResource) Read(ctx context.Context, req resource.ReadReque
 			newUsers[i] = user
 		}
 	}
-	usersList, convertDiags := UserAttributeListFromGo(ctx, newUsers)
+	usersSet, convertDiags := UserAttributeSetFromGo(ctx, newUsers)
 	if convertDiags != nil {
 		resp.Diagnostics.AddError(
 			readingFailedErrorMessage,
-			fmt.Sprintf("Error coverting users back to TF list: %s", convertDiags),
+			fmt.Sprintf("Error coverting users back to TF set: %s", convertDiags),
 		)
 		return
 	}
-	data.Users = usersList
+	data.Users = usersSet
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -213,15 +216,15 @@ func (r *BimGroupUsersResource) Create(ctx context.Context, req resource.CreateR
 			users[idx].Id = intToNumberValue(groupUserResponse.Id)
 			users[idx].Profile = intToNumberValue(groupUserResponse.Profile)
 		}
-		usersList, convertDiags := UserAttributeListFromGo(ctx, users)
+		usersSet, convertDiags := UserAttributeSetFromGo(ctx, users)
 		if convertDiags != nil {
 			resp.Diagnostics.AddError(
 				creatingFailedErrorMessage,
-				fmt.Sprintf("Error coverting users back to TF list: %s", convertDiags),
+				fmt.Sprintf("Error coverting users back to TF set: %s", convertDiags),
 			)
 			return
 		}
-		data.Users = usersList
+		data.Users = usersSet
 		data.Id = users[0].Group
 	} else {
 		resp.Diagnostics.AddError(creatingFailedErrorMessage, "Users list is empty")
@@ -327,6 +330,7 @@ func (r *BimGroupUsersResource) Update(ctx context.Context, req resource.UpdateR
 					)
 					return
 				}
+				newUsers[idx].Id = existingUser.Id
 			} else {
 				if newUser.Group.String() != groupId {
 					resp.Diagnostics.AddError(
@@ -347,16 +351,16 @@ func (r *BimGroupUsersResource) Update(ctx context.Context, req resource.UpdateR
 				newUsers[idx].Profile = intToNumberValue(groupUserResponse.Profile)
 			}
 		}
-		newUsersList, convertDiags := UserAttributeListFromGo(ctx, newUsers)
+		newUsersSet, convertDiags := UserAttributeSetFromGo(ctx, newUsers)
 
 		if convertDiags != nil {
 			resp.Diagnostics.AddError(
 				updatingFailedErrorMessage,
-				fmt.Sprintf("Error coverting users back to TF list: %s", convertDiags),
+				fmt.Sprintf("Error coverting users back to TF set: %s", convertDiags),
 			)
 			return
 		}
-		data.Users = newUsersList
+		data.Users = newUsersSet
 	}
 
 	// Save data into Terraform state
@@ -397,7 +401,7 @@ func (r *BimGroupUsersResource) ConfirmGroupExists(groupId string) (doesExist bo
 	return true, nil
 }
 
-func UserAttributeListFromGo(ctx context.Context, users []UserAttribute) (types.List, diag.Diagnostics) {
+func UserAttributeSetFromGo(ctx context.Context, users []UserAttribute) (types.Set, diag.Diagnostics) {
 	userTypes := map[string]attr.Type{
 		"group":   types.NumberType,
 		"id":      types.NumberType,
@@ -405,8 +409,8 @@ func UserAttributeListFromGo(ctx context.Context, users []UserAttribute) (types.
 		"iamid":   types.StringType,
 		"profile": types.NumberType,
 	}
-	usersList, diags := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: userTypes}, users)
-	return usersList, diags
+	usersSet, diags := types.SetValueFrom(ctx, types.ObjectType{AttrTypes: userTypes}, users)
+	return usersSet, diags
 }
 
 func BimGroupUserToUserAttribute(bimGroupUser BimGroupUser) UserAttribute {
