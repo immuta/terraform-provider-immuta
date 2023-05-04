@@ -423,16 +423,16 @@ func BimGroupUserToUserAttribute(bimGroupUser BimGroupUser) UserAttribute {
 
 type BimGroupUserProfile struct {
 	Id              int         `json:"id"`
-	Name            string      `json:"name"`
-	Email           string      `json:"email"`
-	Phone           string      `json:"phone"`
-	About           string      `json:"about"`
-	Location        string      `json:"location"`
-	Organization    string      `json:"organization"`
-	Position        string      `json:"position"`
-	Preferences     interface{} `json:"preferences"`
-	ExternalUserIds interface{} `json:"externalUserIds"`
-	Scim            string      `json:"scim"`
+	Name            string      `json:"name,omitempty"`
+	Email           string      `json:"email,omitempty"`
+	Phone           string      `json:"phone,omitempty"`
+	About           string      `json:"about,omitempty"`
+	Location        string      `json:"location,omitempty"`
+	Organization    string      `json:"organization,omitempty"`
+	Position        string      `json:"position,omitempty"`
+	Preferences     interface{} `json:"preferences,omitempty"`
+	ExternalUserIds interface{} `json:"externalUserIds,omitempty"`
+	Scim            string      `json:"scim,omitempty"`
 	SystemGenerated bool        `json:"systemGenerated"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`

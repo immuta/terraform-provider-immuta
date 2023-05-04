@@ -15,6 +15,21 @@ const testUser1ProfileId = "119"
 const testUser2UserId = "tf_acc_test_user2@instacart.com"
 const testUser2ProfileId = "120"
 
+var usersMap = map[string]string{
+	"user1": `{
+				group = "` + testGroupId + `"
+				userid = "` + testUser1UserId + `"
+				iamid = "immuta"
+				profile = ` + testUser1ProfileId + `
+			},`,
+	"user2": `{
+				group = "` + testGroupId + `"
+				userid = "` + testUser2UserId + `"
+				iamid = "immuta"
+				profile = ` + testUser2ProfileId + `
+			},`,
+}
+
 func TestAccBimGroupUsers_Basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -23,7 +38,7 @@ func TestAccBimGroupUsers_Basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// test create and read
 			{
-				Config: testAccBimGroupUsersConfigBasic(testUser1UserId, testUser1ProfileId),
+				Config: testAccBimGroupUsersConfigBasic([]string{"user1"}),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"immuta_bim_group_users.test", "id", testGroupId),
@@ -33,9 +48,9 @@ func TestAccBimGroupUsers_Basic(t *testing.T) {
 						"immuta_bim_group_users.test", "users.0.profile", testUser1ProfileId),
 				),
 			},
-			//test update and read
+			//test update (add a new user) and read
 			{
-				Config: testAccBimGroupUsersConfig_Update(testUser1UserId, testUser1ProfileId, testUser2UserId, testUser2ProfileId),
+				Config: testAccBimGroupUsersConfigBasic([]string{"user1", "user2"}),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						"immuta_bim_group_users.test", "id", testGroupId),
@@ -49,6 +64,18 @@ func TestAccBimGroupUsers_Basic(t *testing.T) {
 						"immuta_bim_group_users.test", "users.1.profile", testUser2ProfileId),
 				),
 			},
+			// test update (remove a user) and read
+			{
+				Config: testAccBimGroupUsersConfigBasic([]string{"user2"}),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(
+						"immuta_bim_group_users.test", "id", testGroupId),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_group_users.test", "users.0.userid", testUser2UserId),
+					resource.TestCheckResourceAttr(
+						"immuta_bim_group_users.test", "users.0.profile", testUser2ProfileId),
+				),
+			},
 		},
 	})
 
@@ -58,37 +85,15 @@ func testAccCheckBimGroupUsersDestroy(s *terraform.State) error {
 	return nil
 }
 
-func testAccBimGroupUsersConfigBasic(userId1 string, userProfile1 string) string {
+func testAccBimGroupUsersConfigBasic(users []string) string {
+	var usersList = ""
+	for _, userName := range users {
+		usersList = usersList + usersMap[userName]
+	}
 	return `
 	resource "immuta_bim_group_users" "test" {
 			users = [
-				{
-					group = "` + testGroupId + `"
-					userid = "` + userId1 + `"
-					iamid = "immuta"
-					profile = ` + userProfile1 + `
-				},
-			]
-		}
-	`
-}
-
-func testAccBimGroupUsersConfig_Update(userId1 string, userProfile1 string, userId2 string, userProfile2 string) string {
-	return `
-	resource "immuta_bim_group_users" "test" {
-			users = [
-				{
-					group = "` + testGroupId + `"
-					userid = "` + userId1 + `"
-					iamid = "immuta"
-					profile = ` + userProfile1 + `
-				},
-				{
-					group = "` + testGroupId + `"
-					userid = "` + userId2 + `"
-					iamid = "immuta"
-					profile = ` + userProfile2 + `
-				}
+				` + usersList + `
 			]
 		}
 	`
