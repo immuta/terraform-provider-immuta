@@ -35,11 +35,10 @@ type BimGroupUsersResourceModel struct {
 }
 
 type UserAttribute struct {
-	Group   types.Number `tfsdk:"group"`
-	Id      types.Number `tfsdk:"id"`
-	UserId  types.String `tfsdk:"userid"`
-	IamId   types.String `tfsdk:"iamid"`
-	Profile types.Number `tfsdk:"profile"`
+	Group  types.Number `tfsdk:"group"`
+	Id     types.Number `tfsdk:"id"`
+	UserId types.String `tfsdk:"userid"`
+	IamId  types.String `tfsdk:"iamid"`
 }
 
 func (r *BimGroupUsersResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -73,10 +72,6 @@ func (r *BimGroupUsersResource) Schema(ctx context.Context, req resource.SchemaR
 						"iamid": schema.StringAttribute{
 							Required:    true,
 							Description: "The IamID",
-						},
-						"profile": schema.NumberAttribute{
-							Required:    true,
-							Description: "The user's profile Id",
 						},
 					},
 				},
@@ -214,7 +209,6 @@ func (r *BimGroupUsersResource) Create(ctx context.Context, req resource.CreateR
 				return
 			}
 			users[idx].Id = intToNumberValue(groupUserResponse.Id)
-			users[idx].Profile = intToNumberValue(groupUserResponse.Profile)
 		}
 		usersSet, convertDiags := UserAttributeSetFromGo(ctx, users)
 		if convertDiags != nil {
@@ -348,7 +342,6 @@ func (r *BimGroupUsersResource) Update(ctx context.Context, req resource.UpdateR
 					return
 				}
 				newUsers[idx].Id = intToNumberValue(groupUserResponse.Id)
-				newUsers[idx].Profile = intToNumberValue(groupUserResponse.Profile)
 			}
 		}
 		newUsersSet, convertDiags := UserAttributeSetFromGo(ctx, newUsers)
@@ -403,11 +396,10 @@ func (r *BimGroupUsersResource) ConfirmGroupExists(groupId string) (doesExist bo
 
 func UserAttributeSetFromGo(ctx context.Context, users []UserAttribute) (types.Set, diag.Diagnostics) {
 	userTypes := map[string]attr.Type{
-		"group":   types.NumberType,
-		"id":      types.NumberType,
-		"userid":  types.StringType,
-		"iamid":   types.StringType,
-		"profile": types.NumberType,
+		"group":  types.NumberType,
+		"id":     types.NumberType,
+		"userid": types.StringType,
+		"iamid":  types.StringType,
 	}
 	usersSet, diags := types.SetValueFrom(ctx, types.ObjectType{AttrTypes: userTypes}, users)
 	return usersSet, diags
@@ -419,7 +411,6 @@ func BimGroupUserToUserAttribute(bimGroupUser BimGroupUser) UserAttribute {
 	user.Id = intToNumberValue(bimGroupUser.Id)
 	user.UserId = types.StringValue(bimGroupUser.UserId)
 	user.IamId = types.StringValue(bimGroupUser.IamId)
-	user.Profile = intToNumberValue(bimGroupUser.Profile.Id)
 	return user
 }
 
