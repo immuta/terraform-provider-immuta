@@ -427,7 +427,7 @@ type BimGroupUserProfile struct {
 	Position        string      `json:"position,omitempty"`
 	Preferences     interface{} `json:"preferences,omitempty"`
 	ExternalUserIds interface{} `json:"externalUserIds,omitempty"`
-	Scim            string      `json:"scim,omitempty"`
+	Scim            interface{} `json:"scim,omitempty"`
 	SystemGenerated bool        `json:"systemGenerated"`
 	CreatedAt       time.Time   `json:"createdAt"`
 	UpdatedAt       time.Time   `json:"updatedAt"`
