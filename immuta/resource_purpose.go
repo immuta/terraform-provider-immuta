@@ -194,7 +194,7 @@ func (r *PurposeResource) Read(ctx context.Context, req resource.ReadRequest, re
 		data.Description = types.StringValue(purpose.Description)
 	}
 
-	newSubpurposes, subpurposesDiags := updatePurposeListIfChanged(ctx, data.Subpurposes, purpose.Subpurposes)
+	newSubpurposes, subpurposesDiags := updateListIfChanged[Purpose](ctx, data.Subpurposes, purpose.Subpurposes)
 	if subpurposesDiags != nil && subpurposesDiags.HasError() {
 		resp.Diagnostics.Append(subpurposesDiags...)
 		return

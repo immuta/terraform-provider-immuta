@@ -267,7 +267,7 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	for _, tag := range project.Tags {
 		apiTags = append(apiTags, tag.Name)
 	}
-	newTags, tagsDiag := updateStringListIfChanged(ctx, data.Tags, apiTags)
+	newTags, tagsDiag := updateListIfChanged[string](ctx, data.Tags, apiTags)
 	if tagsDiag != nil {
 		resp.Diagnostics.Append(tagsDiag...)
 		return
@@ -278,7 +278,7 @@ func (r *ProjectResource) Read(ctx context.Context, req resource.ReadRequest, re
 	for _, purpose := range project.Purposes {
 		apiPurposeNames = append(apiPurposeNames, purpose.Name)
 	}
-	newPurposes, purposesDiag := updateStringListIfChanged(ctx, data.Purposes, apiPurposeNames)
+	newPurposes, purposesDiag := updateListIfChanged[string](ctx, data.Purposes, apiPurposeNames)
 	if purposesDiag != nil {
 		resp.Diagnostics.Append(purposesDiag...)
 		return
