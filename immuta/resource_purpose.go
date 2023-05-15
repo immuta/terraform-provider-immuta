@@ -132,6 +132,12 @@ func (r *PurposeResource) Create(ctx context.Context, req resource.CreateRequest
 		}
 		purposeInput.Subpurposes = subpurposes
 	}
+	//newSubpurposes, subpurposesDiags := updateListIfChanged[Purpose](ctx, data.Subpurposes, purpose.Subpurposes)
+	//if subpurposesDiags != nil && subpurposesDiags.HasError() {
+	//	resp.Diagnostics.Append(subpurposesDiags...)
+	//	return
+	//}
+	//data.Subpurposes = newSubpurposes
 
 	// Do it twice as a workaround for a bug in the API where acknowledgement not updated first time (ops are idempotent)
 	for i := 0; i < 2; i++ {

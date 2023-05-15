@@ -97,7 +97,7 @@ func tfListFromGo[T any](ctx context.Context, l []T) (types.List, diag.Diagnosti
 	return mappedValue, nil
 }
 
-func updateListIfChanged[T any](ctx context.Context, tfList types.List, comparisonList []T) (types.List, diag.Diagnostics) {
+func updateListIfChanged[T comparable](ctx context.Context, tfList types.List, comparisonList []T) (types.List, diag.Diagnostics) {
 
 	goTfList, diags := goListFromTf[T](ctx, tfList)
 	if diags != nil {
@@ -105,18 +105,17 @@ func updateListIfChanged[T any](ctx context.Context, tfList types.List, comparis
 	}
 
 	// compare two lists to see if they are equal
+	listsAreSame := true
+	if len(goTfList) != len(comparisonList) {
+		listsAreSame = false
+	}
+	for i := range goTfList {
+		if goTfList[i] != comparisonList[i] {
+			listsAreSame = false
+		}
+	}
 
-	//listsAreSame := true
-	//if len(goTfList) != len(comparisonList) {
-	//	listsAreSame = false
-	//}
-	//for i := range goTfList {
-	//	if goTfList[i] != comparisonList[i] {
-	//		listsAreSame = false
-	//	}
-	//}
-
-	if !reflect.DeepEqual(goTfList, comparisonList) {
+	if !listsAreSame {
 		tfFromComparison, comparisonDiags := tfListFromGo[T](ctx, comparisonList)
 		if comparisonDiags != nil {
 			return types.ListNull(nil), comparisonDiags
