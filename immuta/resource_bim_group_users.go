@@ -205,7 +205,7 @@ func (r *BimGroupUsersResource) Create(ctx context.Context, req resource.CreateR
 			userInput.IamId = user.IamId.ValueString()
 			groupUserResponse, err := r.AddUserToGroup(user.Group.String(), userInput)
 			if err != nil {
-				resp.Diagnostics.AddError(creatingFailedErrorMessage, fmt.Sprintf("Error add a user to gorup: %s", err))
+				resp.Diagnostics.AddError(creatingFailedErrorMessage, fmt.Sprintf("Error adding user [%s] to group: %s", user.UserId.ValueString(), err))
 				return
 			}
 			users[idx].Id = intToNumberValue(groupUserResponse.Id)
