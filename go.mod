@@ -1,4 +1,4 @@
-module github.com/instacart/terraform-provider-immuta
+module github.com/immuta/terraform-provider-immuta
 
 go 1.18
 

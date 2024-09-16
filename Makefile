@@ -1,9 +1,9 @@
 PKG_NAME=immuta
-FULL_PKG_NAME=github.com/instacart/terraform-provider-immuta
+FULL_PKG_NAME=github.com/immuta/terraform-provider-immuta
 VERSION_PLACEHOLDER=version.ProviderVersion
 VERSION=$(shell git rev-parse --short=7 HEAD)
-PROVIDER_VERSION=99.0.0
-IMMUTA_PROVIDER_PATH=registry.terraform.io/instacart/immuta/$(PROVIDER_VERSION)/darwin_amd64
+PROVIDER_VERSION=0.1.0
+IMMUTA_PROVIDER_PATH=registry.terraform.io/immuta/terraform-provider-immuta/$(PROVIDER_VERSION)/darwin_amd64
 
 default: build
 
