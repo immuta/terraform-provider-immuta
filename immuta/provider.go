@@ -10,7 +10,7 @@ import (
 	frameworkschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/instacart/terraform-provider-immuta/client"
+	"github.com/immuta/terraform-provider-immuta/client"
 )
 
 // Ensure ScaffoldingProvider satisfies various provider interfaces.

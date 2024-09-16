@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/instacart/terraform-provider-immuta/immuta"
+	"github.com/immuta/terraform-provider-immuta/immuta"
 	"log"
 )
 
@@ -24,7 +24,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/instacart/immuta",
+		Address: "registry.terraform.io/immuta/terraform-provider-immuta",
 		Debug:   debug,
 	}
 

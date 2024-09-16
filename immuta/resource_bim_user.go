@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/instacart/terraform-provider-immuta/client"
+	"github.com/immuta/terraform-provider-immuta/client"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
