@@ -24,7 +24,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/immuta/terraform-provider-immuta",
+		Address: "registry.terraform.io/immuta/immuta",
 		Debug:   debug,
 	}
 

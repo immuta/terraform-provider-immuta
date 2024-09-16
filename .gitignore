@@ -3,3 +3,6 @@
 bin
 pkg
 releases
+
+.terraform
+.terraform.lock.hcl
