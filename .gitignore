@@ -6,3 +6,4 @@ releases
 
 .terraform
 .terraform.lock.hcl
+*.tfstate*
