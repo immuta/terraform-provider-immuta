@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/instacart/terraform-provider-immuta/immuta"
+	"github.com/immuta/terraform-provider-immuta/immuta"
 	"log"
 )
 

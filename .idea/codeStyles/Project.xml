@@ -1,0 +1,12 @@
+<component name="ProjectCodeStyleConfiguration">
+  <code_scheme name="Project" version="173">
+    <ScalaCodeStyleSettings>
+      <option name="addImportsRelativeToBasePackage" value="false" />
+      <option name="SCALAFMT_CONFIG_PATH" value="$USER_HOME$/.scalafmt.conf" />
+      <option name="FORMATTER" value="1" />
+    </ScalaCodeStyleSettings>
+    <editorconfig>
+      <option name="ENABLED" value="false" />
+    </editorconfig>
+  </code_scheme>
+</component>
