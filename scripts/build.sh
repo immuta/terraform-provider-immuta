@@ -31,7 +31,7 @@ export CGO_ENABLED=0
 # We may want in the future to get rid of development flags using:
 #   -s: to omit the symbol table and debug information
 #   -w: to omit the DWARF symbol table
-LD_FLAGS="-X github.com/instacart/terraform-provider-immuta/version.ProviderVersion=${GIT_COMMIT} $LD_FLAGS"
+LD_FLAGS="-X github.com/immuta/terraform-provider-immuta/version.ProviderVersion=${GIT_COMMIT} $LD_FLAGS"
 
 # Build!
 echo "==> Building..."

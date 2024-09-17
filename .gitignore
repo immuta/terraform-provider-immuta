@@ -1,0 +1,9 @@
+.idea
+
+bin
+pkg
+releases
+
+.terraform
+.terraform.lock.hcl
+*.tfstate*

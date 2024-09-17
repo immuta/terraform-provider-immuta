@@ -2,7 +2,7 @@ package immuta
 
 import (
 	"fmt"
-	"github.com/instacart/terraform-provider-immuta/client"
+	"github.com/immuta/terraform-provider-immuta/client"
 )
 
 type Config struct {

@@ -1,9 +1,9 @@
 PKG_NAME=immuta
-FULL_PKG_NAME=github.com/instacart/terraform-provider-immuta
+FULL_PKG_NAME=github.com/immuta/terraform-provider-immuta
 VERSION_PLACEHOLDER=version.ProviderVersion
 VERSION=$(shell git rev-parse --short=7 HEAD)
-PROVIDER_VERSION=99.0.0
-IMMUTA_PROVIDER_PATH=registry.terraform.io/instacart/immuta/$(PROVIDER_VERSION)/darwin_amd64
+PROVIDER_VERSION=0.1.0
+IMMUTA_PROVIDER_PATH=registry.terraform.io/immuta/immuta/$(PROVIDER_VERSION)/darwin_amd64
 
 default: build
 
@@ -26,17 +26,8 @@ generate:
 	GOFLAGS=-mod=vendor go generate ./...
 
 install: fmtcheck
-	mkdir -p ~/Library/Application\ Support/io.terraform/plugins/$(IMMUTA_PROVIDER_PATH)/
-	go build -o ~/Library/Application\ Support/io.terraform/plugins/$(IMMUTA_PROVIDER_PATH)/terraform-provider-immuta -ldflags="-X $(FULL_PKG_NAME)/$(VERSION_PLACEHOLDER)=$(VERSION)"
-
-uninstall:
-	@rm -vf $(DIR)/terraform-provider-immuta
-
-.PHONY: install-immuta-provider
-install-immuta-provider:
-	aws s3 cp s3://infra-releases/terraform-provider-immuta/latest/darwin_amd64.tar.gz /tmp
-	mkdir -p ~/Library/Application\ Support/io.terraform/plugins/$(IMMUTA_PROVIDER_PATH)/
-	tar -xf /tmp/darwin_amd64.tar.gz -C ~/Library/Application\ Support/io.terraform/plugins/$(IMMUTA_PROVIDER_PATH)/
+	mkdir -p ~/.terraform.d/plugins/$(IMMUTA_PROVIDER_PATH)/
+	go build -o ~/.terraform.d/plugins/$(IMMUTA_PROVIDER_PATH)/terraform-provider-immuta -ldflags="-X $(FULL_PKG_NAME)/$(VERSION_PLACEHOLDER)=$(VERSION)"
 
 test: fmtcheck
 	go test -i $(TEST) || exit 1
@@ -45,3 +36,6 @@ test: fmtcheck
 
 testacc: fmtcheck
 	TF_ACC=1 go test $(TEST) -v ./... -parallel 20 $(TESTARGS) -timeout 120m
+
+uninstall:
+	@rm -vf ~/.terraform.d/plugins/$(IMMUTA_PROVIDER_PATH)/terraform-provider-immuta
