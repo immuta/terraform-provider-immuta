@@ -1,0 +1,13 @@
+name: Hashing
+policyKey: data mask hashing
+type: data
+actions:
+  - rules:
+      - type: Masking
+        config:
+          fields:
+            - type: noTags
+          maskingConfig:
+            type: Hash
+circumstances:
+  - type: noTags

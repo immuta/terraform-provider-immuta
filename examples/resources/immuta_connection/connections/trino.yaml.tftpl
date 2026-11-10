@@ -1,0 +1,19 @@
+# Trino connection captured in example_queries.md, without its credential,
+# which is set with the credential attribute. technology (Trino) and
+# connectionKey (test) are set with attributes too.
+clientConfiguration:
+  host: "localhost"
+  port: 100
+  ssl: false
+  ignoreCertValidation: true
+dataObjectSync:
+  enabled: true
+  startTime: 0
+  schedule: "EVERY_24_HOURS"
+syncOnCreate: true
+dataObjectDefaults:
+  syncPolicy: false
+  # Immuta user profile ID, filled in by templatefile() from data.immuta_user.
+  owners:
+    - type: "USER"
+      id: ${owner_id}

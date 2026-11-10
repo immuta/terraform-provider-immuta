@@ -1,0 +1,28 @@
+name: Mask with Constant
+policyKey: data mask constant
+type: data
+actions:
+  - rules:
+      - type: Masking
+        exceptions:
+          operator: any
+          attributes:
+            - name: auth
+              value: SOMETHING_ELSE
+            - name: auth1
+              value: super secret
+        config:
+          fields:
+            - type: columnTags
+              columnTag: Discovered.Country
+            - type: columnTags
+              columnTag: Discovered.Passport
+          maskingConfig:
+            type: Constant
+            constant: REDACTED
+circumstanceOperator: any
+circumstances:
+  - type: columnTags
+    columnTag: Discovered.Country
+  - type: columnTags
+    columnTag: Discovered.Passport
