@@ -10,14 +10,21 @@ import (
 )
 
 // connectionTechnologies are the technologies documented by the connections
-// API.
-var connectionTechnologies = []string{"BigQuery", "Databricks", "Redshift", "Snowflake", "Teradata", "Trino"}
+// API: data platforms, and the Entra and Okta identity providers, whose
+// schemas are in the connections API OpenAPI definition.
+var connectionTechnologies = []string{"BigQuery", "Databricks", "Entra", "Okta", "Redshift", "Snowflake", "Teradata", "Trino"}
 
 // connectionConfigurationKeys are the documented top-level keys of a
-// connection, other than technology and connectionKey.
+// connection, other than technology and connectionKey. The object sync
+// filter keys are used by the Entra and Okta identity connections.
 var connectionConfigurationKeys = []string{
 	"clientConfiguration", "dataObjectSync", "dataObjectDefaults", "policyConfiguration", "auditConfiguration", "syncOnCreate",
+	"objectSyncFilterType", "objectSyncFilterConfiguration",
 }
+
+// connectionTopLevelOnlyKeys are top-level keys that Immuta rejects inside
+// clientConfiguration.
+var connectionTopLevelOnlyKeys = []string{"objectSyncFilterType", "objectSyncFilterConfiguration"}
 
 // connectionCreateOnlyKeys only apply when a connection is registered, and
 // are not part of the documented update.
@@ -26,9 +33,16 @@ var connectionCreateOnlyKeys = []string{"syncOnCreate"}
 // connectionFixedSettings are the settings the documented update
 // (PATCH /api/connections/{connectionKey}) cannot change, by technology and
 // section. Changing one means registering the connection again.
+//
+// The update documentation does not cover the Entra and Okta identity
+// connections, so none of their settings is treated as fixed: replacing one
+// deletes its crawled groups, while Immuta rejecting an update leaves the
+// connection as it is.
 var connectionFixedSettings = map[string]map[string][]string{
 	"BigQuery":   {"clientConfiguration": {"directoryCustomerId", "immutaDataset", "location", "projectId"}},
 	"Databricks": {"clientConfiguration": {"host", "immutaSystemCatalog", "port"}, "policyConfiguration": {"excludeGroupPattern"}},
+	"Entra":      {},
+	"Okta":       {},
 	"Redshift":   {"clientConfiguration": {"host", "immutaSystemDatabase", "port"}},
 	"Snowflake":  {"clientConfiguration": {"host", "immutaSystemDatabase", "port"}},
 	"Teradata":   {},
@@ -52,6 +66,11 @@ func checkConnectionConfiguration(document map[string]any) ([]string, error) {
 		if _, ok := clientMap["credential"]; ok {
 			return nil, fmt.Errorf("clientConfiguration.credential must not be in the configuration; set it with the sensitive credential attribute so that it is not shown in plans")
 		}
+		for _, key := range connectionTopLevelOnlyKeys {
+			if _, ok := clientMap[key]; ok {
+				return nil, fmt.Errorf("%s must be at the top level of the configuration, not in clientConfiguration", key)
+			}
+		}
 	}
 
 	var warnings []string
@@ -69,6 +88,13 @@ func checkConnectionConfiguration(document map[string]any) ([]string, error) {
 
 			continue
 		}
+		if key == "objectSyncFilterType" {
+			if _, ok := value.(string); !ok {
+				return nil, fmt.Errorf("objectSyncFilterType must be a string, such as prefix")
+			}
+
+			continue
+		}
 		if _, ok := value.(map[string]any); !ok && value != nil {
 			return nil, fmt.Errorf("%s must be a mapping", key)
 		}
@@ -76,6 +102,29 @@ func checkConnectionConfiguration(document map[string]any) ([]string, error) {
 	sort.Strings(warnings)
 
 	return warnings, nil
+}
+
+// checkTechnologyConfiguration validates the settings whose format a
+// technology documents.
+func checkTechnologyConfiguration(technology string, document map[string]any) error {
+	client, _ := document["clientConfiguration"].(map[string]any)
+
+	if technology == "Okta" {
+		if domain, ok := client["oktaDomain"]; ok {
+			if value, isString := domain.(string); !isString || !isHostname(value) {
+				return fmt.Errorf("clientConfiguration.oktaDomain must be the hostname only, such as dev-123456.okta.com, " +
+					"without a scheme, port or path")
+			}
+		}
+	}
+
+	return nil
+}
+
+// isHostname reports whether value is a bare hostname, with no scheme, port,
+// path or whitespace.
+func isHostname(value string) bool {
+	return value != "" && !strings.ContainsAny(value, ":/?#@ \t\n")
 }
 
 // checkConnectionCredential validates a credential document.

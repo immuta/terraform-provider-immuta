@@ -17,6 +17,8 @@ import (
 var connectionFixedSettings = map[string]map[string][]string{
 	"BigQuery":   {"clientConfiguration": {"directoryCustomerId", "immutaDataset", "location", "projectId"}},
 	"Databricks": {"clientConfiguration": {"host", "immutaSystemCatalog", "port"}, "policyConfiguration": {"excludeGroupPattern"}},
+	"Entra":      {},
+	"Okta":       {},
 	"Redshift":   {"clientConfiguration": {"host", "immutaSystemDatabase", "port"}},
 	"Snowflake":  {"clientConfiguration": {"host", "immutaSystemDatabase", "port"}},
 	"Teradata":   {},

@@ -2,13 +2,14 @@
 page_title: "immuta_connection Resource - terraform-provider-immuta"
 subcategory: ""
 description: |-
-  Registers an Immuta connection to a data platform with the connections API.
+  Registers an Immuta connection to a data platform, or to an Entra or Okta identity provider, with the connections API.
 ---
 
 # immuta_connection (Resource)
 
 Registers an Immuta connection to a data platform (BigQuery, Databricks,
-Redshift, Snowflake, Teradata or Trino) with the
+Redshift, Snowflake, Teradata or Trino), or to an Entra or Okta identity
+provider, with the
 [connections API](https://documentation.immuta.com/saas/developer-guides/api-intro/connections-api).
 
 The connection's settings are kept as a YAML (or JSON) document in the format
@@ -106,6 +107,64 @@ resource "immuta_connection" "snowflake" {
     prevent_destroy = true
   }
 }
+
+# Identity connections. Entra and Okta crawl the identity provider's groups
+# that start with immutaResourcePrefix. Access is then granted through
+# membership of those groups, which Immuta manages in the identity provider.
+locals {
+  entra_tenant_id = "00000000-0000-0000-0000-000000000000"
+  okta_domain     = "dev-123456.okta.com" # hostname only
+}
+
+variable "entra_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "okta_api_token" {
+  type      = string
+  sensitive = true
+}
+
+resource "immuta_connection" "entra" {
+  connection_key = "entra-prod"
+  technology     = "Entra"
+  configuration  = templatefile("${path.module}/connections/entra.yaml.tftpl", { tenant_id = local.entra_tenant_id })
+
+  # OAuth M2M (client secret) for an app registration with the Microsoft
+  # Graph application permissions to read groups and manage their members.
+  credential = jsonencode({
+    authenticationType = "OAuthWithSecret"
+    clientId           = "11111111-1111-1111-1111-111111111111"
+    authorityUrl       = "https://login.microsoftonline.com/${local.entra_tenant_id}/oauth2/v2.0/token"
+    scope              = "https://graph.microsoft.com/.default"
+    clientSecret       = var.entra_client_secret
+  })
+
+  # Destroying an identity connection deletes the groups crawled through it.
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "immuta_connection" "okta" {
+  connection_key = "okta-prod"
+  technology     = "Okta"
+  configuration  = templatefile("${path.module}/connections/okta.yaml.tftpl", { okta_domain = local.okta_domain })
+
+  # An Okta API token. To use OAuth client credentials instead, set
+  # authenticationType = "OAuthWithSecret" with clientId, clientSecret,
+  # authorityUrl = "https://${local.okta_domain}/oauth2/v1/token" and
+  # scope = "okta.groups.read".
+  credential = jsonencode({
+    authenticationType = "Token"
+    token              = var.okta_api_token
+  })
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
 ```
 
 `connections/trino.yaml.tftpl`, a template so that the owner comes from
@@ -134,7 +193,49 @@ dataObjectDefaults:
 ```
 
 The [examples directory](https://github.com/immuta/terraform-provider-immuta/tree/main/examples/resources/immuta_connection/connections)
-also holds Databricks and Snowflake configurations.
+also holds Databricks, Snowflake, Entra and Okta configurations.
+
+## Identity connections (Entra and Okta)
+
+An Entra or Okta connection crawls the identity provider's groups whose names
+start with `clientConfiguration.immutaResourcePrefix`. When a policy or an
+access request grants access to a securable bound to one of those groups,
+Immuta adds or removes the user in the group through that connection.
+
+`connections/okta.yaml.tftpl`:
+
+```yaml
+# Okta identity connection. Its credential is set with the credential
+# attribute, and technology (Okta) and connectionKey with attributes too.
+clientConfiguration:
+  # The hostname only, without a scheme, port or path.
+  oktaDomain: "${okta_domain}"
+  # Only groups whose name starts with this prefix are crawled.
+  immutaResourcePrefix: "IMMUTA_"
+# Only the prefix filter is supported, and it takes no configuration. Both
+# keys are top-level: Immuta rejects them in clientConfiguration.
+objectSyncFilterType: "prefix"
+objectSyncFilterConfiguration: {}
+dataObjectSync:
+  enabled: true
+  startTime: 0
+  schedule: "EVERY_24_HOURS"
+syncOnCreate: true
+```
+
+| Setting | Entra | Okta |
+| --- | --- | --- |
+| `clientConfiguration` | `directoryTenantId`, `immutaResourcePrefix` | `oktaDomain` (hostname only, such as `dev-123456.okta.com`), `immutaResourcePrefix` |
+| Top level of the configuration | `objectSyncFilterType: prefix` and an empty `objectSyncFilterConfiguration` (Immuta rejects them in `clientConfiguration`) | The same |
+| `credential` | `OAuthWithSecret` (OAuth M2M with a client secret): `clientId`, `clientSecret`, `authorityUrl` (`https://login.microsoftonline.com/<tenant ID>/oauth2/v2.0/token`), `scope` (`https://graph.microsoft.com/.default`) | `Token` with `token` (an API token), or `OAuthWithSecret` with `clientId`, `clientSecret`, `authorityUrl` (`https://<Okta domain>/oauth2/v1/token`) and `scope` (`okta.groups.read`) |
+
+The Entra app registration needs Microsoft Graph application permissions to
+read groups and manage their members.
+
+The provider rejects an `oktaDomain` with a scheme, port or path at plan time.
+No identity connection setting replaces the connection when it changes: every
+change is sent as an update. Destroying an identity connection deletes the
+groups crawled through it.
 
 ## Schema
 
@@ -142,12 +243,13 @@ also holds Databricks and Snowflake configurations.
 
 - `connection_key` (String) Unique key of the connection. It becomes the name
   of the top-level data object in Immuta. Changing it replaces the connection.
-- `technology` (String) `BigQuery`, `Databricks`, `Redshift`, `Snowflake`,
-  `Teradata` or `Trino`. Changing it replaces the connection.
+- `technology` (String) `BigQuery`, `Databricks`, `Entra`, `Okta`, `Redshift`,
+  `Snowflake`, `Teradata` or `Trino`. Changing it replaces the connection.
 - `configuration` (String) The rest of the registration payload, as a YAML or
   JSON document: `clientConfiguration` (without its `credential`),
   `dataObjectSync`, `dataObjectDefaults`, `policyConfiguration`,
-  `auditConfiguration` and `syncOnCreate`.
+  `auditConfiguration` and `syncOnCreate`, and for Entra and Okta
+  `objectSyncFilterType` and `objectSyncFilterConfiguration`.
 - `credential` (String, Sensitive) The `clientConfiguration.credential` of the
   payload, as a YAML or JSON document, usually built with `jsonencode()` from
   variables. It needs an `authenticationType`.

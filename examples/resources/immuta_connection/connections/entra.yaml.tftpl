@@ -1,0 +1,15 @@
+# Entra identity connection. Its credential is set with the credential
+# attribute, and technology (Entra) and connectionKey with attributes too.
+clientConfiguration:
+  directoryTenantId: "${tenant_id}"
+  # Only groups whose display name starts with this prefix are crawled.
+  immutaResourcePrefix: "IMMUTA_"
+# Only the prefix filter is supported, and it takes no configuration. Both
+# keys are top-level: Immuta rejects them in clientConfiguration.
+objectSyncFilterType: "prefix"
+objectSyncFilterConfiguration: {}
+dataObjectSync:
+  enabled: true
+  startTime: 0
+  schedule: "EVERY_24_HOURS"
+syncOnCreate: true

@@ -214,6 +214,14 @@ func TestCheckConnectionConfiguration(t *testing.T) {
 		"section not a map":     {document: "dataObjectSync: true\n", wantErr: "dataObjectSync must be a mapping"},
 		"syncOnCreate not bool": {document: "syncOnCreate: yes please\n", wantErr: "syncOnCreate must be true or false"},
 		"undocumented key":      {document: "dataObjectSyncc: {enabled: true}\n", wantWarn: `"dataObjectSyncc"`},
+		"object sync filter":    {document: "objectSyncFilterType: prefix\nobjectSyncFilterConfiguration: {}\n"},
+		"object sync filter type in clientConfiguration": {
+			document: "clientConfiguration:\n  objectSyncFilterType: prefix\n", wantErr: "objectSyncFilterType must be at the top level",
+		},
+		"object sync filter configuration in clientConfiguration": {
+			document: "clientConfiguration:\n  objectSyncFilterConfiguration: {}\n", wantErr: "objectSyncFilterConfiguration must be at the top level",
+		},
+		"object sync filter type not a string": {document: "objectSyncFilterType: {prefix: true}\n", wantErr: "objectSyncFilterType must be a string"},
 	}
 
 	for name, tc := range cases {
@@ -268,5 +276,57 @@ func TestConnectionCreateBody(t *testing.T) {
 	// A configuration without clientConfiguration still gets the credential.
 	if got := connectionCreateBody("k", "Trino", map[string]any{}, credential)["clientConfiguration"]; !equalJSON(got, map[string]any{"credential": credential}) {
 		t.Errorf("clientConfiguration = %v, want only the credential", got)
+	}
+}
+
+func TestCheckTechnologyConfiguration(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		technology string
+		document   string
+		wantErr    bool
+	}{
+		"okta hostname":              {technology: "Okta", document: "clientConfiguration:\n  oktaDomain: dev-123456.okta.com\n"},
+		"okta scheme":                {technology: "Okta", document: "clientConfiguration:\n  oktaDomain: https://dev-123456.okta.com\n", wantErr: true},
+		"okta port":                  {technology: "Okta", document: "clientConfiguration:\n  oktaDomain: dev-123456.okta.com:443\n", wantErr: true},
+		"okta path":                  {technology: "Okta", document: "clientConfiguration:\n  oktaDomain: dev-123456.okta.com/oauth2\n", wantErr: true},
+		"okta empty":                 {technology: "Okta", document: "clientConfiguration:\n  oktaDomain: \"\"\n", wantErr: true},
+		"okta not a string":          {technology: "Okta", document: "clientConfiguration:\n  oktaDomain: 42\n", wantErr: true},
+		"okta without domain":        {technology: "Okta", document: "dataObjectSync:\n  enabled: true\n"},
+		"other technologies ignored": {technology: "Entra", document: "clientConfiguration:\n  oktaDomain: https://x\n"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := checkTechnologyConfiguration(tc.technology, mustParse(t, tc.document))
+			if tc.wantErr && (err == nil || !strings.Contains(err.Error(), "oktaDomain")) {
+				t.Errorf("error = %v, want one about oktaDomain", err)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %s", err)
+			}
+		})
+	}
+}
+
+// Identity connection settings are updated in place, never by replacing the
+// connection, which would delete its crawled groups.
+func TestIdentityConnectionChangesArePatched(t *testing.T) {
+	t.Parallel()
+
+	before := mustParse(t, "clientConfiguration:\n  oktaDomain: a.okta.com\n  immutaResourcePrefix: IMMUTA_\n")
+	after := mustParse(t, "clientConfiguration:\n  oktaDomain: b.okta.com\n  immutaResourcePrefix: IMMUTA_\n")
+
+	for _, technology := range []string{"Entra", "Okta"} {
+		patch, fixed := connectionChanges(technology, before, after)
+		if len(fixed) != 0 {
+			t.Errorf("%s: fixed = %v, want none", technology, fixed)
+		}
+		if want := map[string]any{"clientConfiguration": map[string]any{"oktaDomain": "b.okta.com"}}; !equalJSON(patch, want) {
+			t.Errorf("%s: patch = %v, want %v", technology, patch, want)
+		}
 	}
 }

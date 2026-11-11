@@ -179,7 +179,9 @@ instead of being set table by table.
 
 A connection registers a data platform, such as Snowflake, Databricks or
 Redshift, with Immuta. Immuta then discovers the platform's catalogs,
-schemas and tables, which are its data objects.
+schemas and tables, which are its data objects. A connection can also
+register an Entra or Okta identity provider, whose groups Immuta crawls and
+manages memberships of.
 
 | Resource / data source | What it does |
 | --- | --- |

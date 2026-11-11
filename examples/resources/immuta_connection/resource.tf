@@ -78,3 +78,61 @@ resource "immuta_connection" "snowflake" {
     prevent_destroy = true
   }
 }
+
+# Identity connections. Entra and Okta crawl the identity provider's groups
+# that start with immutaResourcePrefix. Access is then granted through
+# membership of those groups, which Immuta manages in the identity provider.
+locals {
+  entra_tenant_id = "00000000-0000-0000-0000-000000000000"
+  okta_domain     = "dev-123456.okta.com" # hostname only
+}
+
+variable "entra_client_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "okta_api_token" {
+  type      = string
+  sensitive = true
+}
+
+resource "immuta_connection" "entra" {
+  connection_key = "entra-prod"
+  technology     = "Entra"
+  configuration  = templatefile("${path.module}/connections/entra.yaml.tftpl", { tenant_id = local.entra_tenant_id })
+
+  # OAuth M2M (client secret) for an app registration with the Microsoft
+  # Graph application permissions to read groups and manage their members.
+  credential = jsonencode({
+    authenticationType = "OAuthWithSecret"
+    clientId           = "11111111-1111-1111-1111-111111111111"
+    authorityUrl       = "https://login.microsoftonline.com/${local.entra_tenant_id}/oauth2/v2.0/token"
+    scope              = "https://graph.microsoft.com/.default"
+    clientSecret       = var.entra_client_secret
+  })
+
+  # Destroying an identity connection deletes the groups crawled through it.
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "immuta_connection" "okta" {
+  connection_key = "okta-prod"
+  technology     = "Okta"
+  configuration  = templatefile("${path.module}/connections/okta.yaml.tftpl", { okta_domain = local.okta_domain })
+
+  # An Okta API token. To use OAuth client credentials instead, set
+  # authenticationType = "OAuthWithSecret" with clientId, clientSecret,
+  # authorityUrl = "https://${local.okta_domain}/oauth2/v1/token" and
+  # scope = "okta.groups.read".
+  credential = jsonencode({
+    authenticationType = "Token"
+    token              = var.okta_api_token
+  })
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

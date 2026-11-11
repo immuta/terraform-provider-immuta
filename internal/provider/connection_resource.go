@@ -68,7 +68,8 @@ func (r *connectionResource) Metadata(_ context.Context, req resource.MetadataRe
 
 func (r *connectionResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Registers an Immuta connection to a data platform with the connections API " +
+		MarkdownDescription: "Registers an Immuta connection to a data platform, or to an Entra or Okta " +
+			"identity provider, with the connections API " +
 			"(`/api/connections`).\n\n" +
 			"**Destroying or replacing a connection deletes it and all of its data objects in Immuta.**",
 		Attributes: map[string]schema.Attribute{
@@ -92,7 +93,7 @@ func (r *connectionResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"technology": schema.StringAttribute{
 				Required: true,
-				MarkdownDescription: fmt.Sprintf("Technology of the data platform: %s. Changing it replaces the connection.",
+				MarkdownDescription: fmt.Sprintf("Technology of the data platform or identity provider: %s. Changing it replaces the connection.",
 					codeList(connectionTechnologies)),
 				Validators: []validator.String{
 					stringvalidator.OneOf(connectionTechnologies...),
@@ -106,7 +107,8 @@ func (r *connectionResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Required:   true,
 				MarkdownDescription: "The rest of the registration payload, as a YAML or JSON document, usually read " +
 					"with `file()`: `clientConfiguration` (without its `credential`), `dataObjectSync`, " +
-					"`dataObjectDefaults`, `policyConfiguration`, `auditConfiguration` and `syncOnCreate`. " +
+					"`dataObjectDefaults`, `policyConfiguration`, `auditConfiguration` and `syncOnCreate`, and for " +
+					"Entra and Okta `objectSyncFilterType` and `objectSyncFilterConfiguration`. " +
 					"Formatting, comments and key order do not produce a diff.",
 				PlanModifiers: []planmodifier.String{
 					keepEquivalentYAMLDocument{},
@@ -149,16 +151,23 @@ func (r *connectionResource) Configure(_ context.Context, req resource.Configure
 // ValidateConfig checks both documents at plan time, before any request.
 func (r *connectionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var configuration, credential yamlDocumentValue
+	var technology types.String
 
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("configuration"), &configuration)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credential"), &credential)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("technology"), &technology)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	if !configuration.IsNull() && !configuration.IsUnknown() {
-		_, diags := readConnectionConfiguration(configuration)
+		document, diags := readConnectionConfiguration(configuration)
 		resp.Diagnostics.Append(diags...)
+		if !diags.HasError() && !technology.IsNull() && !technology.IsUnknown() {
+			if err := checkTechnologyConfiguration(technology.ValueString(), document); err != nil {
+				resp.Diagnostics.AddAttributeError(path.Root("configuration"), "Invalid connection configuration", err.Error())
+			}
+		}
 	}
 	if !credential.IsNull() && !credential.IsUnknown() {
 		_, diags := readConnectionCredential(credential)

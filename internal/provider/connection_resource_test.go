@@ -429,6 +429,14 @@ resource "immuta_connection" "test" {
 			resourceConfig("Trino", "clientConfiguration: [unclosed\n", validCredential),
 			`not\s+valid\s+YAML`,
 		},
+		"object sync filter in clientConfiguration": {
+			resourceConfig("Entra", "clientConfiguration:\n  objectSyncFilterType: prefix\n", validCredential),
+			`objectSyncFilterType\s+must\s+be\s+at\s+the\s+top\s+level`,
+		},
+		"okta domain with a scheme": {
+			resourceConfig("Okta", "clientConfiguration:\n  oktaDomain: https://dev-123456.okta.com\n", validCredential),
+			`oktaDomain\s+must\s+be\s+the\s+hostname\s+only`,
+		},
 	}
 
 	for name, tc := range cases {
@@ -467,6 +475,112 @@ func checkAllConnectionsDestroyed(server *testutil.ConnectionServer) resource.Te
 	return func(*terraform.State) error {
 		if got := server.Count(); got != 0 {
 			return fmt.Errorf("%d connections still exist after destroy", got)
+		}
+
+		return nil
+	}
+}
+
+const (
+	entraCredential     = `{ authenticationType = "OAuthWithSecret", clientId = "c", authorityUrl = "https://login.microsoftonline.com/tenant-1/oauth2/v2.0/token", scope = "https://graph.microsoft.com/.default", clientSecret = "sec" }`
+	oktaTokenCredential = `{ authenticationType = "Token", token = "okta-secret" }`
+	oktaOAuthCredential = `{ authenticationType = "OAuthWithSecret", clientId = "c", authorityUrl = "https://dev-123456.okta.com/oauth2/v1/token", scope = "okta.groups.read", clientSecret = "sec" }`
+)
+
+// identityConnectionConfig is one identity connection whose configuration is
+// rendered from an example template, with the template's only variable.
+func identityConnectionConfig(name, key, technology, file, variable, value, credential string) string {
+	return fmt.Sprintf(`
+resource "immuta_connection" %q {
+  connection_key = %q
+  technology     = %q
+  configuration  = templatefile(%q, { %s = %q })
+  credential     = jsonencode(%s)
+}
+`, name, key, technology, file, variable, value, credential)
+}
+
+func TestConnectionResourceIdentityConnectionsFromExampleFiles(t *testing.T) {
+	skipWithoutTerraformCLI(t)
+	clearProviderEnvironment(t)
+	fastConnectionPolling(t)
+
+	server := testutil.NewConnectionServer()
+	t.Cleanup(server.Close)
+
+	config := providerConfig(server.URL()) +
+		identityConnectionConfig("entra", "entra-prod", "Entra", exampleConnectionFile(t, "entra"), "tenant_id", "tenant-1", entraCredential) +
+		identityConnectionConfig("okta_token", "okta-token", "Okta", exampleConnectionFile(t, "okta"), "okta_domain", "dev-123456.okta.com", oktaTokenCredential) +
+		identityConnectionConfig("okta_oauth", "okta-oauth", "Okta", exampleConnectionFile(t, "okta"), "okta_domain", "dev-123456.okta.com", oktaOAuthCredential)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		CheckDestroy:             checkAllConnectionsDestroyed(server),
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("immuta_connection.entra", "id", "entra-prod"),
+					resource.TestCheckResourceAttr("immuta_connection.entra", "state", "ACTIVE"),
+					resource.TestCheckResourceAttr("immuta_connection.okta_token", "technology", "Okta"),
+					checkIdentityConnectionRegistered(t, server, "entra-prod", "Entra", "entra", "${tenant_id}", "tenant-1",
+						map[string]any{"authenticationType": "OAuthWithSecret", "clientId": "c", "authorityUrl": "https://login.microsoftonline.com/tenant-1/oauth2/v2.0/token", "scope": "https://graph.microsoft.com/.default", "clientSecret": "sec"}),
+					checkIdentityConnectionRegistered(t, server, "okta-token", "Okta", "okta", "${okta_domain}", "dev-123456.okta.com",
+						map[string]any{"authenticationType": "Token", "token": "okta-secret"}),
+					checkIdentityConnectionRegistered(t, server, "okta-oauth", "Okta", "okta", "${okta_domain}", "dev-123456.okta.com",
+						map[string]any{"authenticationType": "OAuthWithSecret", "clientId": "c", "authorityUrl": "https://dev-123456.okta.com/oauth2/v1/token", "scope": "okta.groups.read", "clientSecret": "sec"}),
+				),
+			},
+			{
+				// The empty objectSyncFilterConfiguration and the redacted
+				// credential are not drift.
+				Config:   config,
+				PlanOnly: true,
+			},
+			{
+				ResourceName:            "immuta_connection.entra",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"configuration", "credential"},
+			},
+		},
+	})
+}
+
+// checkIdentityConnectionRegistered asserts that Immuta received the rendered
+// template as the registration payload, with the credential in
+// clientConfiguration.credential.
+func checkIdentityConnectionRegistered(t *testing.T, server *testutil.ConnectionServer, key, technology, file, placeholder, value string, credential map[string]any) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		content, err := os.ReadFile(exampleConnectionFile(t, file))
+		if err != nil {
+			return err
+		}
+		configuration, err := parseYAMLMapping(strings.ReplaceAll(string(content), placeholder, value), "configuration")
+		if err != nil {
+			return err
+		}
+
+		body, ok := server.Body(key)
+		if !ok {
+			return fmt.Errorf("connection %s was not registered", key)
+		}
+		if want := connectionCreateBody(key, technology, configuration, credential); !equalJSON(body, want) {
+			return fmt.Errorf("connection %s was registered with %v, want %v", key, body, want)
+		}
+		client, _ := body["clientConfiguration"].(map[string]any)
+		if !equalJSON(client["credential"], credential) {
+			return fmt.Errorf("connection %s credential = %v, want it in clientConfiguration.credential", key, client["credential"])
+		}
+		// Immuta rejects the object sync filter in clientConfiguration.
+		if body["objectSyncFilterType"] != "prefix" || !equalJSON(body["objectSyncFilterConfiguration"], map[string]any{}) {
+			return fmt.Errorf("connection %s object sync filter = %v, %v, want prefix and {} at the top level",
+				key, body["objectSyncFilterType"], body["objectSyncFilterConfiguration"])
+		}
+		for _, misplaced := range connectionTopLevelOnlyKeys {
+			if _, ok := client[misplaced]; ok {
+				return fmt.Errorf("connection %s has %s in clientConfiguration", key, misplaced)
+			}
 		}
 
 		return nil
