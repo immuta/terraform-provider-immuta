@@ -136,3 +136,12 @@ resource "immuta_connection" "okta" {
     prevent_destroy = true
   }
 }
+
+# A Custom connection holds folders and securables created in Immuta rather
+# than crawled from a platform (see immuta_custom_data_object). It takes no
+# credential.
+resource "immuta_connection" "snowflake_access" {
+  connection_key = "snowflake-access"
+  technology     = "Custom"
+  configuration  = templatefile("${path.module}/connections/custom.yaml.tftpl", local.connection_template_vars)
+}

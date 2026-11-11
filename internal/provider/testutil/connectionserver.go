@@ -16,6 +16,7 @@ import (
 // provider independently.
 var connectionFixedSettings = map[string]map[string][]string{
 	"BigQuery":   {"clientConfiguration": {"directoryCustomerId", "immutaDataset", "location", "projectId"}},
+	"Custom":     {},
 	"Databricks": {"clientConfiguration": {"host", "immutaSystemCatalog", "port"}, "policyConfiguration": {"excludeGroupPattern"}},
 	"Entra":      {},
 	"Okta":       {},
@@ -44,7 +45,10 @@ type ConnectionServer struct {
 	patches     []map[string]any
 	requests    []RecordedRequest
 
-	dataObjects    map[string]*storedDataObject
+	dataObjects map[string]*storedDataObject
+	// accessGroups maps a Custom securable id to its bound identity group id.
+	accessGroups   map[string]string
+	objectDeletes  int
 	objectSeq      int
 	hiddenSearches int
 	objectSearches int
@@ -213,7 +217,17 @@ func (s *ConnectionServer) create(w http.ResponseWriter, r *http.Request) {
 	technology, _ := body["technology"].(string)
 	client, _ := body["clientConfiguration"].(map[string]any)
 	credential, _ := client["credential"].(map[string]any)
-	if _, known := connectionFixedSettings[technology]; !known || key == "" || credential["authenticationType"] == nil {
+	if technology == "Custom" {
+		// A Custom connection documents only an empty credential, and requires
+		// at least one default owner.
+		defaults, _ := body["dataObjectDefaults"].(map[string]any)
+		owners, _ := defaults["owners"].([]any)
+		if key == "" || len(credential) > 0 || len(owners) == 0 {
+			writeConnectionError(w, http.StatusBadRequest, "CONN001", "connectionKey and dataObjectDefaults.owners are required, and the credential must be empty")
+
+			return
+		}
+	} else if _, known := connectionFixedSettings[technology]; !known || key == "" || credential["authenticationType"] == nil {
 		writeConnectionError(w, http.StatusBadRequest, "CONN001", "technology, connectionKey and a credential are required")
 
 		return

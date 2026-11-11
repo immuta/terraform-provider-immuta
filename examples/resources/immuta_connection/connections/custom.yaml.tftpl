@@ -1,0 +1,13 @@
+# Custom connection: an Immuta-side container for folders and securables
+# created with immuta_custom_data_object, for example an access package whose
+# members Immuta manages in an Entra or Okta group. It has no remote platform,
+# so it takes no credential. technology (Custom) and connectionKey are set
+# with attributes.
+dataObjectDefaults:
+  syncPolicy: true
+  # Immuta user profile ID, filled in by templatefile() from data.immuta_user.
+  # Owners can add folders and securables to the connection. At least one is
+  # required.
+  owners:
+    - type: "USER"
+      id: ${owner_id}

@@ -276,3 +276,77 @@ func isPresent(raw json.RawMessage) bool {
 
 	return len(trimmed) > 0 && !bytes.Equal(trimmed, []byte("null"))
 }
+
+// Data object types that can be created under a Custom connection.
+const (
+	DataObjectTypeFolder    = "FOLDER"
+	DataObjectTypeSecurable = "SECURABLE"
+)
+
+// CreateDataObject creates a folder or securable under a Custom connection
+// with the documented POST /api/connections/{connectionKey}/dataObjects. An
+// empty parentID creates it under the connection root.
+func (c *Client) CreateDataObject(ctx context.Context, connectionKey, name, objectType, parentID string) (*DataObject, error) {
+	if err := validateConnectionKey(connectionKey); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(name) == "" {
+		return nil, errors.New("a data object name is required")
+	}
+	if objectType != DataObjectTypeFolder && objectType != DataObjectTypeSecurable {
+		return nil, fmt.Errorf("a data object type must be %s or %s, got %q", DataObjectTypeFolder, DataObjectTypeSecurable, objectType)
+	}
+
+	body := map[string]any{"name": name, "type": objectType}
+	// The API rejects a null parentId, so it is only sent when set.
+	if parentID != "" {
+		body["parentId"] = parentID
+	}
+
+	response, err := c.do(ctx, request{
+		method:   http.MethodPost,
+		segments: []string{"api", "connections", connectionKey, "dataObjects"},
+		body:     body,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return decodeDataObject(response)
+}
+
+// RenameDataObject renames a Custom folder or securable with the documented
+// POST /api/connections/{connectionKey}/dataObjects/{id}/_rename. Immuta
+// renames it, and updates the paths of its descendants, asynchronously.
+func (c *Client) RenameDataObject(ctx context.Context, connectionKey, id, name string) error {
+	if err := validateDataObjectRef(connectionKey, id); err != nil {
+		return err
+	}
+	if strings.TrimSpace(name) == "" {
+		return errors.New("a data object name is required")
+	}
+
+	_, err := c.do(ctx, request{
+		method:   http.MethodPost,
+		segments: []string{"api", "connections", connectionKey, "dataObjects", id, "_rename"},
+		body:     map[string]any{"name": name},
+	})
+
+	return err
+}
+
+// DeleteDataObject deletes a data object and all of its descendants with the
+// documented DELETE /api/connections/{connectionKey}/dataObjects/{id}. Immuta
+// deletes it asynchronously.
+func (c *Client) DeleteDataObject(ctx context.Context, connectionKey, id string) error {
+	if err := validateDataObjectRef(connectionKey, id); err != nil {
+		return err
+	}
+
+	_, err := c.do(ctx, request{
+		method:   http.MethodDelete,
+		segments: []string{"api", "connections", connectionKey, "dataObjects", id},
+	})
+
+	return err
+}

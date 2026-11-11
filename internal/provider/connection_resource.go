@@ -68,8 +68,9 @@ func (r *connectionResource) Metadata(_ context.Context, req resource.MetadataRe
 
 func (r *connectionResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Registers an Immuta connection to a data platform, or to an Entra or Okta " +
-			"identity provider, with the connections API " +
+		MarkdownDescription: "Registers an Immuta connection to a data platform, to an Entra or Okta " +
+			"identity provider, or a Custom connection for folders and securables created in Immuta, with the " +
+			"connections API " +
 			"(`/api/connections`).\n\n" +
 			"**Destroying or replacing a connection deletes it and all of its data objects in Immuta.**",
 		Attributes: map[string]schema.Attribute{
@@ -93,7 +94,7 @@ func (r *connectionResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"technology": schema.StringAttribute{
 				Required: true,
-				MarkdownDescription: fmt.Sprintf("Technology of the data platform or identity provider: %s. Changing it replaces the connection.",
+				MarkdownDescription: fmt.Sprintf("Technology of the data platform or identity provider, or `Custom` for a Custom connection: %s. Changing it replaces the connection.",
 					codeList(connectionTechnologies)),
 				Validators: []validator.String{
 					stringvalidator.OneOf(connectionTechnologies...),
@@ -116,10 +117,11 @@ func (r *connectionResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"credential": schema.StringAttribute{
 				CustomType: yamlDocumentType{},
-				Required:   true,
+				Optional:   true,
 				Sensitive:  true,
 				MarkdownDescription: "The `clientConfiguration.credential` of the payload, as a YAML or JSON " +
 					"document, usually built with `jsonencode()` from variables. It needs an `authenticationType`. " +
+					"Required for every technology but `Custom`, which takes no credential. " +
 					"Immuta never returns secrets, so changes made outside Terraform are not detected. Changing " +
 					"it makes Immuta crawl the connection again.",
 				PlanModifiers: []planmodifier.String{
@@ -172,6 +174,11 @@ func (r *connectionResource) ValidateConfig(ctx context.Context, req resource.Va
 	if !credential.IsNull() && !credential.IsUnknown() {
 		_, diags := readConnectionCredential(credential)
 		resp.Diagnostics.Append(diags...)
+	}
+	if !technology.IsNull() && !technology.IsUnknown() && !credential.IsUnknown() {
+		if err := checkCredentialPresence(technology.ValueString(), !credential.IsNull()); err != nil {
+			resp.Diagnostics.AddAttributeError(path.Root("credential"), "Invalid connection credential", err.Error())
+		}
 	}
 }
 
@@ -244,7 +251,7 @@ func (r *connectionResource) Create(ctx context.Context, req resource.CreateRequ
 
 	configuration, diags := readConnectionConfiguration(plan.Configuration)
 	resp.Diagnostics.Append(diags...)
-	credential, diags := readConnectionCredential(plan.Credential)
+	credential, diags := readOptionalConnectionCredential(plan.Credential)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -333,7 +340,7 @@ func (r *connectionResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	next, diags := readConnectionConfiguration(plan.Configuration)
 	resp.Diagnostics.Append(diags...)
-	credential, diags := readConnectionCredential(plan.Credential)
+	credential, diags := readOptionalConnectionCredential(plan.Credential)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -356,8 +363,8 @@ func (r *connectionResource) Update(ctx context.Context, req resource.UpdateRequ
 	}
 
 	// The credential is only sent when it changes, because Immuta crawls the
-	// connection again whenever it receives one.
-	if credentialChanged(state.Credential, plan.Credential) {
+	// connection again whenever it receives one. A Custom connection has none.
+	if credential != nil && credentialChanged(state.Credential, plan.Credential) {
 		client, _ := patch["clientConfiguration"].(map[string]any)
 		if client == nil {
 			client = map[string]any{}
@@ -538,6 +545,16 @@ func readConnectionConfiguration(value yamlDocumentValue) (map[string]any, diag.
 	}
 
 	return document, diagnostics
+}
+
+// readOptionalConnectionCredential parses the credential, or returns nil when
+// none is set, as for a Custom connection.
+func readOptionalConnectionCredential(value yamlDocumentValue) (map[string]any, diag.Diagnostics) {
+	if value.IsNull() {
+		return nil, nil
+	}
+
+	return readConnectionCredential(value)
 }
 
 // readConnectionCredential parses the credential. Its errors never include

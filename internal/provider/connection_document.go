@@ -10,9 +10,14 @@ import (
 )
 
 // connectionTechnologies are the technologies documented by the connections
-// API: data platforms, and the Entra and Okta identity providers, whose
-// schemas are in the connections API OpenAPI definition.
-var connectionTechnologies = []string{"BigQuery", "Databricks", "Entra", "Okta", "Redshift", "Snowflake", "Teradata", "Trino"}
+// API: data platforms, the Entra and Okta identity providers, and Custom,
+// whose schemas are in the connections API OpenAPI definition.
+var connectionTechnologies = []string{"BigQuery", "Custom", "Databricks", "Entra", "Okta", "Redshift", "Snowflake", "Teradata", "Trino"}
+
+// connectionTechnologyCustom is the Custom technology. A Custom connection
+// holds folders and securables created in Immuta rather than crawled from a
+// remote platform, so it takes no credential.
+const connectionTechnologyCustom = "Custom"
 
 // connectionConfigurationKeys are the documented top-level keys of a
 // connection, other than technology and connectionKey. The object sync
@@ -125,6 +130,19 @@ func checkTechnologyConfiguration(technology string, document map[string]any) er
 // path or whitespace.
 func isHostname(value string) bool {
 	return value != "" && !strings.ContainsAny(value, ":/?#@ \t\n")
+}
+
+// checkCredentialPresence checks that a credential is set for every
+// technology but Custom, which documents only an empty credential.
+func checkCredentialPresence(technology string, credentialSet bool) error {
+	switch {
+	case technology == connectionTechnologyCustom && credentialSet:
+		return fmt.Errorf("a Custom connection takes no credential; remove the credential attribute")
+	case technology != connectionTechnologyCustom && !credentialSet:
+		return fmt.Errorf("a %s connection needs a credential", technology)
+	}
+
+	return nil
 }
 
 // checkConnectionCredential validates a credential document.

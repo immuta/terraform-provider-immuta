@@ -26,6 +26,9 @@ type storedDataObject struct {
 	syncPolicy *bool
 	// tags are the ids of the tags applied to this data object itself.
 	tags []int64
+	// pendingName is the name of a rename that has not finished yet.
+	pendingName  string
+	pendingPolls int
 }
 
 // DataObjectTagPatch records the tags object of a data object PATCH.
@@ -178,6 +181,14 @@ func (s *ConnectionServer) handleDataObjects(w http.ResponseWriter, r *http.Requ
 	switch {
 	case len(segments) == 4 && segments[2] == "dataObjects" && segments[3] == "_search" && r.Method == http.MethodPost:
 		s.searchDataObjects(w, r)
+	case len(segments) == 4 && segments[3] == "dataObjects" && r.Method == http.MethodPost:
+		s.createCustomDataObject(w, r, unescape(segments[2]))
+	case len(segments) == 5 && segments[3] == "dataObjects" && r.Method == http.MethodDelete:
+		s.deleteCustomDataObject(w, unescape(segments[2]), segments[4])
+	case len(segments) == 6 && segments[3] == "dataObjects" && segments[5] == "_rename" && r.Method == http.MethodPost:
+		s.renameCustomDataObject(w, r, unescape(segments[2]), segments[4])
+	case len(segments) == 6 && segments[3] == "dataObjects" && segments[5] == "accessGroup":
+		s.handleAccessGroup(w, r, unescape(segments[2]), segments[4])
 	case len(segments) == 5 && segments[3] == "dataObjects" && (r.Method == http.MethodGet || r.Method == http.MethodPatch):
 		id := segments[4]
 
@@ -193,6 +204,7 @@ func (s *ConnectionServer) handleDataObjects(w http.ResponseWriter, r *http.Requ
 		if r.Method == http.MethodPatch && !s.patchDataObject(w, r, object) {
 			return true
 		}
+		s.advanceRenameLocked(object)
 		writeJSON(w, http.StatusOK, s.dataObjectPayloadLocked(object))
 	default:
 		return false

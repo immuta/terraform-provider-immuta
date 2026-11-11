@@ -437,6 +437,14 @@ resource "immuta_connection" "test" {
 			resourceConfig("Okta", "clientConfiguration:\n  oktaDomain: https://dev-123456.okta.com\n", validCredential),
 			`oktaDomain\s+must\s+be\s+the\s+hostname\s+only`,
 		},
+		"data platform without a credential": {
+			resourceConfig("Trino", trinoConfigurationYAML, "null"),
+			`Trino\s+connection\s+needs\s+a\s+credential`,
+		},
+		"custom connection with a credential": {
+			resourceConfig("Custom", customConfigurationYAML, validCredential),
+			`Custom\s+connection\s+takes\s+no\s+credential`,
+		},
 	}
 
 	for name, tc := range cases {
@@ -585,4 +593,74 @@ func checkIdentityConnectionRegistered(t *testing.T, server *testutil.Connection
 
 		return nil
 	}
+}
+
+const customConfigurationYAML = "dataObjectDefaults:\n  syncPolicy: true\n  owners:\n    - {type: USER, id: 2}\n"
+
+// customConnectionConfig is a Custom connection rendered from the example
+// template. It has no credential attribute.
+func customConnectionConfig(t *testing.T, name, key string) string {
+	t.Helper()
+
+	return fmt.Sprintf(`
+resource "immuta_connection" %q {
+  connection_key = %q
+  technology     = "Custom"
+  configuration  = templatefile(%q, { owner_id = %q })
+}
+`, name, key, exampleConnectionFile(t, "custom"), exampleConnectionOwnerID)
+}
+
+func TestConnectionResourceCustomFromExampleFile(t *testing.T) {
+	skipWithoutTerraformCLI(t)
+	clearProviderEnvironment(t)
+	fastConnectionPolling(t)
+
+	server := testutil.NewConnectionServer()
+	t.Cleanup(server.Close)
+
+	config := providerConfig(server.URL()) + customConnectionConfig(t, "custom", "snowflake-access")
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		CheckDestroy:             checkAllConnectionsDestroyed(server),
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("immuta_connection.custom", "technology", "Custom"),
+					resource.TestCheckResourceAttr("immuta_connection.custom", "state", "ACTIVE"),
+					resource.TestCheckNoResourceAttr("immuta_connection.custom", "credential"),
+					func(*terraform.State) error {
+						body, ok := server.Body("snowflake-access")
+						if !ok {
+							return fmt.Errorf("the Custom connection was not registered")
+						}
+						// No credential is sent; Immuta defaults it to the empty one.
+						if _, sent := body["clientConfiguration"]; sent {
+							return fmt.Errorf("clientConfiguration was sent for a Custom connection: %v", body["clientConfiguration"])
+						}
+						want := map[string]any{"syncPolicy": true, "owners": []any{map[string]any{"type": "USER", "id": 2}}}
+						if !equalJSON(body["dataObjectDefaults"], want) {
+							return fmt.Errorf("dataObjectDefaults = %v, want %v", body["dataObjectDefaults"], want)
+						}
+
+						return nil
+					},
+				),
+			},
+			{
+				// Nothing changes on a second plan.
+				Config:   config,
+				PlanOnly: true,
+			},
+			{
+				ResourceName:                         "immuta_connection.custom",
+				ImportState:                          true,
+				ImportStateId:                        "snowflake-access",
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "connection_key",
+			},
+		},
+	})
 }
