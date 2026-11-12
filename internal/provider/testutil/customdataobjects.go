@@ -58,7 +58,15 @@ func (s *ConnectionServer) AccessGroup(securableID string) string {
 	return s.accessGroups[securableID]
 }
 
-// SetAccessGroup binds (or with "" unbinds) an identity group out of band,
+// AccessGroupUnbinds returns how many access group DELETE requests were made.
+func (s *ConnectionServer) AccessGroupUnbinds() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.accessGroupUnbinds
+}
+
+// SetAccessGroup binds (or with "" clears) an identity group out of band,
 // as a change in the Immuta UI would.
 func (s *ConnectionServer) SetAccessGroup(securableID, identityGroupID string) {
 	s.mu.Lock()
@@ -238,15 +246,24 @@ func (s *ConnectionServer) deleteCustomDataObject(w http.ResponseWriter, connect
 			}
 		}
 	}
+	// Immuta refuses to delete a data object while it, or a securable under
+	// it, still has a bound access group.
+	for _, gone := range doomed {
+		if _, bound := s.accessGroups[gone]; bound {
+			writeConnectionError(w, http.StatusConflict, "CONFLICT",
+				"Remove authored access and unbind every accessGroup before deleting this data object")
+
+			return
+		}
+	}
 	for _, gone := range doomed {
 		delete(s.dataObjects, gone)
-		delete(s.accessGroups, gone)
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]any{"taskId": "00000000-0000-4000-8000-000000000000"})
 }
 
-// handleAccessGroup serves GET and PUT of a securable's access group.
+// handleAccessGroup serves GET, PUT and DELETE of a securable's access group.
 func (s *ConnectionServer) handleAccessGroup(w http.ResponseWriter, r *http.Request, connectionKey, securableID string) {
 	var body struct {
 		Action          string `json:"action"`
@@ -272,13 +289,13 @@ func (s *ConnectionServer) handleAccessGroup(w http.ResponseWriter, r *http.Requ
 
 	switch r.Method {
 	case http.MethodGet:
-		var bound any
-		if id, ok := s.accessGroups[securableID]; ok {
-			bound = id
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"identityGroupId": bound})
+		writeJSON(w, http.StatusOK, s.accessGroupPayloadLocked(securableID))
 	case http.MethodPut:
 		s.putAccessGroupLocked(w, securable, body.Action, body.IdentityGroupID)
+	case http.MethodDelete:
+		s.accessGroupUnbinds++
+		delete(s.accessGroups, securableID)
+		w.WriteHeader(http.StatusNoContent)
 	default:
 		writeConnectionError(w, http.StatusMethodNotAllowed, "VALIDATION", "method not allowed")
 	}
@@ -309,20 +326,28 @@ func (s *ConnectionServer) putAccessGroupLocked(w http.ResponseWriter, securable
 			s.accessGroups = map[string]string{}
 		}
 		s.accessGroups[securable.id] = groupID
-	case "unbind":
-		if s.accessGroups[securable.id] != groupID {
-			writeConnectionError(w, http.StatusBadRequest, "VALIDATION", "the identity group is not bound to this securable")
-
-			return
-		}
-		delete(s.accessGroups, securable.id)
 	default:
-		writeConnectionError(w, http.StatusBadRequest, "VALIDATION", "action must be bind or unbind")
+		writeConnectionError(w, http.StatusBadRequest, "VALIDATION", "action must be bind: unbind with DELETE")
 
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"identityGroupId": s.accessGroups[securable.id]})
+	writeJSON(w, http.StatusOK, s.accessGroupPayloadLocked(securable.id))
+}
+
+// accessGroupPayloadLocked renders a binding as GET .../accessGroup does.
+func (s *ConnectionServer) accessGroupPayloadLocked(securableID string) map[string]any {
+	groupID, ok := s.accessGroups[securableID]
+	if !ok {
+		return map[string]any{"identityGroupId": nil}
+	}
+
+	payload := map[string]any{"state": "LIVE", "identityGroupId": groupID}
+	if group, ok := s.dataObjects[groupID]; ok {
+		payload["identityConnectionKey"] = group.connectionKey
+	}
+
+	return payload
 }
 
 func (o *storedDataObject) connectionKeyOrEmpty() string {

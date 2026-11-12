@@ -106,10 +106,10 @@ func TestAccessGroupRequests(t *testing.T) {
 		t.Fatalf("bind: %s", err)
 	}
 	bound, err := client.GetAccessGroup(t.Context(), "snowflake-access", "s1")
-	if err != nil || bound != "g1" {
-		t.Fatalf("get = %q, %v", bound, err)
+	if err != nil || bound.IdentityGroupID != "g1" {
+		t.Fatalf("get = %+v, %v", bound, err)
 	}
-	if err := client.UnbindAccessGroup(t.Context(), "snowflake-access", "s1", "g1"); err != nil {
+	if err := client.UnbindAccessGroup(t.Context(), "snowflake-access", "s1"); err != nil {
 		t.Fatalf("unbind: %s", err)
 	}
 
@@ -117,7 +117,7 @@ func TestAccessGroupRequests(t *testing.T) {
 	want := []recorded{
 		{http.MethodPut, endpoint, "", map[string]any{"action": "bind", "identityGroupId": "g1"}},
 		{http.MethodGet, endpoint, "", nil},
-		{http.MethodPut, endpoint, "", map[string]any{"action": "unbind", "identityGroupId": "g1"}},
+		{http.MethodDelete, endpoint, "", nil},
 	}
 	if len(*requests) != len(want) {
 		t.Fatalf("%d requests, want %d", len(*requests), len(want))
@@ -132,6 +132,20 @@ func TestAccessGroupRequests(t *testing.T) {
 	if err := client.BindAccessGroup(t.Context(), "snowflake-access", "s1", " "); err == nil {
 		t.Error("bind without a group: expected an error")
 	}
+	if err := client.UnbindAccessGroup(t.Context(), "snowflake-access", ""); err == nil {
+		t.Error("unbind without a securable: expected an error")
+	}
+}
+
+func TestUnbindAccessGroupNotFound(t *testing.T) {
+	t.Parallel()
+
+	server, _ := recordingServer(t, http.StatusNotFound, `{"message": "data object not found"}`)
+	client := newTestClient(t, server.URL)
+
+	if err := client.UnbindAccessGroup(t.Context(), "snowflake-access", "s1"); !IsNotFound(err) {
+		t.Errorf("unbind = %v, want an error matching ErrNotFound", err)
+	}
 }
 
 func TestDecodeAccessGroup(t *testing.T) {
@@ -140,28 +154,49 @@ func TestDecodeAccessGroup(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		body    string
-		want    string
+		want    AccessGroup
 		wantErr bool
 	}{
-		{"empty body is unbound", "", "", false},
-		{"null is unbound", "null", "", false},
-		{"identityGroupId", `{"identityGroupId": "g1"}`, "g1", false},
-		{"null identityGroupId is unbound", `{"identityGroupId": null}`, "", false},
-		{"identityGroup object", `{"identityGroup": {"id": "g1", "name": "IMMUTA_ANALYSTS"}}`, "g1", false},
-		{"null identityGroup is unbound", `{"identityGroup": null}`, "", false},
-		{"identityGroup without id", `{"identityGroup": {}}`, "", true},
+		{"empty body is unbound", "", AccessGroup{}, false},
+		{"null is unbound", "null", AccessGroup{}, false},
+		{
+			"the documented response",
+			`{"state": "LIVE", "identityConnectionKey": "entra-prod", "identityGroupId": "g1"}`,
+			AccessGroup{IdentityGroupID: "g1", IdentityConnectionKey: "entra-prod", State: "LIVE"},
+			false,
+		},
+		{"only identityGroupId", `{"identityGroupId": "g1"}`, AccessGroup{IdentityGroupID: "g1"}, false},
+		{"null identityGroupId is unbound", `{"state": null, "identityGroupId": null}`, AccessGroup{}, false},
 		// An unknown shape must not be read as unbound, which would make
 		// Terraform forget the binding.
-		{"unknown shape", `{"group": "g1"}`, "", true},
-		{"not JSON", `<html>`, "", true},
+		{"no identityGroupId", `{"state": "LIVE", "group": "g1"}`, AccessGroup{}, true},
+		{"identityGroupId not a string", `{"identityGroupId": 7}`, AccessGroup{}, true},
+		{"not JSON", `<html>`, AccessGroup{}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			got, err := decodeAccessGroup([]byte(tc.body))
 			if (err != nil) != tc.wantErr || got != tc.want {
-				t.Errorf("decodeAccessGroup(%q) = %q, %v; want %q, error %t", tc.body, got, err, tc.want, tc.wantErr)
+				t.Errorf("decodeAccessGroup(%q) = %+v, %v; want %+v, error %t", tc.body, got, err, tc.want, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestAccessGroupString(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		group AccessGroup
+		want  string
+	}{
+		{AccessGroup{}, "no identity group"},
+		{AccessGroup{IdentityGroupID: "g1"}, "the identity group g1"},
+		{AccessGroup{IdentityGroupID: "g1", IdentityConnectionKey: "entra-prod", State: "LIVE"}, "the identity group g1 of the connection entra-prod (state LIVE)"},
+	} {
+		if got := tc.group.String(); got != tc.want {
+			t.Errorf("%+v.String() = %q, want %q", tc.group, got, tc.want)
+		}
 	}
 }

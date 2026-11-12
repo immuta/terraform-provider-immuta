@@ -226,7 +226,7 @@ func (s *DomainServer) handle(w http.ResponseWriter, r *http.Request) {
 	case len(segments) == 2 && segments[0] == "domain" && r.Method == http.MethodPut:
 		s.update(w, r, segments[1])
 	case len(segments) == 2 && segments[0] == "domain" && r.Method == http.MethodDelete:
-		s.delete(w, segments[1])
+		s.delete(w, r, segments[1])
 	case len(segments) == 3 && segments[0] == "domain" && segments[2] == "settings" && r.Method == http.MethodPut:
 		s.updateSettings(w, r, segments[1])
 	case len(segments) == 3 && segments[0] == "domain" && segments[2] == "assignment" && r.Method == http.MethodPost:
@@ -504,12 +504,34 @@ func (s *DomainServer) update(w http.ResponseWriter, r *http.Request, id string)
 	writeJSON(w, http.StatusOK, domain)
 }
 
-func (s *DomainServer) delete(w http.ResponseWriter, id string) {
+// delete follows Immuta: a domain that still has data sources is not
+// deleted, and ?dryRun=true counts what is left without deleting anything.
+func (s *DomainServer) delete(w http.ResponseWriter, r *http.Request, id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, ok := s.domains[id]; !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "domain not found"})
+
+		return
+	}
+
+	dataSources := 0
+	for _, source := range s.dataSources {
+		if source.domain == id {
+			dataSources++
+		}
+	}
+	if r.URL.Query().Get("dryRun") == "true" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"dataSourceCount": dataSources, "globalPolicyCount": 0, "identifierCount": 0, "dataProductCount": 0,
+		})
+
+		return
+	}
+	if dataSources > 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"message": fmt.Sprintf(
+			"There is %d resource left in the domain. There are data sources that are connected to the domain", dataSources)})
 
 		return
 	}

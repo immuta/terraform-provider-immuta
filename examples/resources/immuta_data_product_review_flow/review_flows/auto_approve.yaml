@@ -1,0 +1,11 @@
+# Approve every request straight away. Read with file().
+nodes:
+  - id: 53c03cdf-63e1-437c-9f0e-dc68b842da59
+    type: root
+  - id: 4d6e8f0a-1b2c-4d3e-8f5a-6b7c8d9e0f44
+    type: outcome
+    outcome: approve
+
+edges:
+  - source: 53c03cdf-63e1-437c-9f0e-dc68b842da59
+    target: 4d6e8f0a-1b2c-4d3e-8f5a-6b7c8d9e0f44

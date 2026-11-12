@@ -89,6 +89,8 @@ func (s *DomainServer) handleDataSources(w http.ResponseWriter, r *http.Request,
 		s.addDomainDataSources(w, r, segments[1])
 	case len(segments) == 4 && segments[0] == "domain" && segments[2] == "datasources" && r.Method == http.MethodDelete:
 		s.removeDomainDataSource(w, segments[1], segments[3])
+	case len(segments) == 4 && segments[0] == "collection" && segments[2] == "datasources" && r.Method == http.MethodDelete:
+		s.removeCollectionDataSource(w, segments[1], segments[3])
 	default:
 		return false
 	}
@@ -283,6 +285,25 @@ func (s *DomainServer) removeDomainDataSource(w http.ResponseWriter, domainID, r
 	writeJSON(w, http.StatusOK, map[string]any{"id": id, "name": dataSource.Name})
 }
 
+// removeCollectionDataSource implements the DELETE
+// /collection/{domainId}/datasources/{dataSourceId} the Immuta UI uses: it
+// answers 204, whatever the domain's assignment type.
+func (s *DomainServer) removeCollectionDataSource(w http.ResponseWriter, domainID, rawID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id, _ := strconv.Atoi(rawID)
+	dataSource, ok := s.dataSources[id]
+	if _, domainExists := s.domains[domainID]; !domainExists || !ok || dataSource.domain != domainID {
+		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Data source not found in domain"})
+
+		return
+	}
+	dataSource.domain = ""
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func dataSourcePayload(dataSource *storedDataSource) map[string]any {
 	namePath := dataSource.NamePath
 	if namePath == nil {
@@ -295,5 +316,17 @@ func dataSourcePayload(dataSource *storedDataSource) map[string]any {
 		"connectionKey":      dataSource.ConnectionKey,
 		"namePath":           namePath,
 		"dataObjectUniqueId": "4eed11f5-1368-4b75-afda-" + strings.Repeat("0", 12-len(strconv.Itoa(dataSource.ID))) + strconv.Itoa(dataSource.ID),
+	}
+}
+
+// RemoveDataSourcesFromDomains removes every data source from its domain, as
+// an operator does before destroying a domain: Immuta does not delete a
+// domain that still has data sources.
+func (s *DomainServer) RemoveDataSourcesFromDomains() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, source := range s.dataSources {
+		source.domain = ""
 	}
 }

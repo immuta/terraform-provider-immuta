@@ -10,10 +10,13 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	"github.com/immuta/terraform-provider-immuta/internal/immutaapi"
@@ -257,6 +260,9 @@ resource "immuta_domain" "test" {
 					resource.TestCheckResourceAttr(domainResourceName, "assignment_type", "manual"),
 					resource.TestCheckResourceAttr(domainResourceName, "autoscanning", "false"),
 					resource.TestCheckResourceAttrSet(domainResourceName, "created_at"),
+					// Omitted force_destroy stays null, like state written before
+					// the attribute existed, so neither plans a change.
+					resource.TestCheckNoResourceAttr(domainResourceName, "force_destroy"),
 					checkDomainParity(server),
 				),
 			},
@@ -740,5 +746,227 @@ func TestDomainResourceTracksTheDomainWhenSettingsFail(t *testing.T) {
 	// created domain was tracked and destroyed rather than orphaned.
 	if got := server.Count(); got != 0 {
 		t.Errorf("%d domains are left in the API: the created domain was not saved to state", got)
+	}
+}
+
+// forceDestroyDomainConfig is immuta_domain.test, with the force_destroy line
+// given, and data sources assigned to it dynamically by the Sales tag: the
+// data sources 2 and 3 of tagDataSources.
+func forceDestroyDomainConfig(serverURL, forceDestroy string) string {
+	return providerConfig(serverURL) + fmt.Sprintf(`
+resource "immuta_domain" "test" {
+  name = "Denmark"
+  %s
+}
+
+resource "immuta_domain_dynamic_assignment" "test" {
+  domain_id = immuta_domain.test.id
+  tags      = ["Sales"]
+}
+`, forceDestroy)
+}
+
+// checkCollectionRemovals checks which data sources were removed with the
+// DELETE /collection/{domainId}/datasources/{dataSourceId} the UI uses.
+func checkCollectionRemovals(t *testing.T, server *testutil.DomainServer, want ...string) {
+	t.Helper()
+
+	var got []string
+	for _, request := range server.Requests() {
+		if request.Method == http.MethodDelete && strings.HasPrefix(request.Path, "/collection/") {
+			got = append(got, request.Path[strings.LastIndex(request.Path, "/")+1:])
+		}
+	}
+	if !sameStrings(got, want) {
+		t.Errorf("data sources removed through /collection = %q, want %q", got, want)
+	}
+}
+
+// With force_destroy, destroying the domain removes the data sources a
+// dynamic assignment left in it, without deleting them, then the domain.
+func TestDomainResourceForceDestroyRemovesDataSources(t *testing.T) {
+	skipWithoutTerraformCLI(t)
+	clearProviderEnvironment(t)
+	fastDomainAssignmentPolling(t, time.Minute)
+
+	server := testutil.NewDomainServer()
+	t.Cleanup(server.Close)
+	tagDataSources(server)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		CheckDestroy:             checkAllDomainsDestroyed(server),
+		Steps: []resource.TestStep{
+			{
+				Config: forceDestroyDomainConfig(server.URL(), ""),
+			},
+			{
+				// Turning force_destroy on updates the state only.
+				Config: forceDestroyDomainConfig(server.URL(), "force_destroy = true"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(domainResourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				Check: resource.TestCheckResourceAttr(domainResourceName, "force_destroy", "true"),
+			},
+			{
+				// The assignment and the domain are destroyed in one apply.
+				Config: providerConfig(server.URL()),
+			},
+		},
+	})
+
+	checkCollectionRemovals(t, server, "2", "3")
+	for _, id := range []int{2, 3} {
+		if domain := server.DataSourceDomain(id); domain != "" {
+			t.Errorf("data source %d is still in the domain %s", id, domain)
+		}
+	}
+}
+
+// Without force_destroy, set to false or omitted, nothing is removed and
+// Immuta's refusal is reported, pointing at force_destroy.
+func TestDomainResourceWithoutForceDestroyKeepsDataSources(t *testing.T) {
+	for name, forceDestroy := range map[string]string{"false": "force_destroy = false", "omitted": ""} {
+		t.Run(name, func(t *testing.T) {
+			skipWithoutTerraformCLI(t)
+			clearProviderEnvironment(t)
+			fastDomainAssignmentPolling(t, time.Minute)
+
+			server := testutil.NewDomainServer()
+			t.Cleanup(server.Close)
+			tagDataSources(server)
+
+			resource.UnitTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: testProviderFactories(),
+				CheckDestroy:             checkAllDomainsDestroyed(server),
+				Steps: []resource.TestStep{
+					{
+						Config: forceDestroyDomainConfig(server.URL(), forceDestroy),
+					},
+					{
+						Config: providerConfig(server.URL()),
+						ExpectError: regexp.MustCompile(`2\s+data\s+sources\s+\(dataSourceCount\)[\s\S]*` +
+							`set\s+force_destroy\s+=\s+true\s+on\s+the\s+immuta_domain`),
+					},
+					{
+						PreConfig: func() {
+							checkCollectionRemovals(t, server)
+							server.RemoveDataSourcesFromDomains()
+						},
+						Config: providerConfig(server.URL()),
+					},
+				},
+			})
+		})
+	}
+}
+
+// A data source that left the domain while force_destroy empties it, so that
+// removing it answers 404, does not stop the delete.
+func TestDomainResourceForceDestroyIgnoresDataSourcesAlreadyRemoved(t *testing.T) {
+	skipWithoutTerraformCLI(t)
+	clearProviderEnvironment(t)
+	fastDomainAssignmentPolling(t, time.Minute)
+
+	server := testutil.NewDomainServer()
+	t.Cleanup(server.Close)
+	tagDataSources(server)
+
+	target, err := url.Parse(server.URL())
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/collection/") && strings.HasSuffix(r.URL.Path, "/2") {
+			server.SetDataSourceDomain(2, "")
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	t.Cleanup(front.Close)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		CheckDestroy:             checkAllDomainsDestroyed(server),
+		Steps: []resource.TestStep{
+			{
+				Config: forceDestroyDomainConfig(front.URL, "force_destroy = true"),
+			},
+			{
+				Config: providerConfig(front.URL),
+			},
+		},
+	})
+
+	if got := server.Count(); got != 0 {
+		t.Errorf("%d domains are left in the API", got)
+	}
+}
+
+// When removing a data source fails partway, the domain is not deleted, the
+// diagnostic says what was removed, and applying again finishes the job.
+func TestDomainResourceForceDestroyStopsOnFailure(t *testing.T) {
+	skipWithoutTerraformCLI(t)
+	clearProviderEnvironment(t)
+	fastDomainAssignmentPolling(t, time.Minute)
+
+	server := testutil.NewDomainServer()
+	t.Cleanup(server.Close)
+	tagDataSources(server)
+
+	target, err := url.Parse(server.URL())
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	var failing atomic.Bool
+	failing.Store(true)
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failing.Load() && r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/collection/") &&
+			strings.HasSuffix(r.URL.Path, "/3") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"internal error"}`))
+
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	t.Cleanup(front.Close)
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		CheckDestroy:             checkAllDomainsDestroyed(server),
+		Steps: []resource.TestStep{
+			{
+				Config: forceDestroyDomainConfig(front.URL, "force_destroy = true"),
+			},
+			{
+				Config: providerConfig(front.URL),
+				ExpectError: regexp.MustCompile(`Unable\s+to\s+remove\s+the\s+data\s+source\s+3\s+from\s+the\s+Immuta\s+domain` +
+					`[\s\S]*removed\s+1\s+of\s+the\s+2\s+data\s+sources\s+\["2"\][\s\S]*domain\s+was\s+not\s+deleted`),
+			},
+			{
+				PreConfig: func() {
+					if got := server.Count(); got != 1 {
+						t.Errorf("%d domains in the API after the failure, want 1", got)
+					}
+					if got := server.DataSourceDomain(2); got != "" {
+						t.Errorf("data source 2 is still in the domain %s", got)
+					}
+					if got := server.DataSourceDomain(3); got == "" {
+						t.Error("data source 3 left the domain although removing it failed")
+					}
+					failing.Store(false)
+				},
+				Config: providerConfig(front.URL),
+			},
+		},
+	})
+
+	if got := server.Count(); got != 0 {
+		t.Errorf("%d domains are left in the API", got)
 	}
 }

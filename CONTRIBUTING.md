@@ -127,6 +127,14 @@ variables and the username of an existing user:
 export IMMUTA_TEST_GLOBAL_USER_USERNAME="jane.doe@example.com"
 ```
 
+`TestAccDomainResourceForceDestroy` assigns data sources to a throwaway domain
+by tag, then destroys the domain with `force_destroy`. It needs a tag on at
+least one data source that is in no domain. Without it, it is skipped:
+
+```sh
+export IMMUTA_TEST_FORCE_DESTROY_TAG="..."
+```
+
 Every step checks Terraform state against a direct API read. A resource that
 applies cleanly but stores the wrong state still fails.
 

@@ -47,14 +47,16 @@ type ConnectionServer struct {
 
 	dataObjects map[string]*storedDataObject
 	// accessGroups maps a Custom securable id to its bound identity group id.
-	accessGroups   map[string]string
-	objectDeletes  int
-	objectSeq      int
-	hiddenSearches int
-	objectSearches int
-	objectPatches  []map[string]any
-	tagNames       map[int64]string
-	tagPatches     []DataObjectTagPatch
+	accessGroups map[string]string
+	// accessGroupUnbinds counts access group DELETE requests.
+	accessGroupUnbinds int
+	objectDeletes      int
+	objectSeq          int
+	hiddenSearches     int
+	objectSearches     int
+	objectPatches      []map[string]any
+	tagNames           map[int64]string
+	tagPatches         []DataObjectTagPatch
 }
 
 type storedConnection struct {

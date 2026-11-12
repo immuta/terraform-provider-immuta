@@ -45,6 +45,7 @@ var connectionCreateOnlyKeys = []string{"syncOnCreate"}
 // connection as it is.
 var connectionFixedSettings = map[string]map[string][]string{
 	"BigQuery":   {"clientConfiguration": {"directoryCustomerId", "immutaDataset", "location", "projectId"}},
+	"Custom":     {},
 	"Databricks": {"clientConfiguration": {"host", "immutaSystemCatalog", "port"}, "policyConfiguration": {"excludeGroupPattern"}},
 	"Entra":      {},
 	"Okta":       {},
@@ -162,11 +163,17 @@ func terraformName(apiKey string) string {
 	return apiKey
 }
 
-// connectionCreateBody builds the documented registration payload.
+// connectionCreateBody builds the documented registration payload. A nil
+// credential, for a Custom connection, is left out: Immuta defaults it to the
+// empty credential.
 func connectionCreateBody(key, technology string, configuration, credential map[string]any) map[string]any {
 	body := deepCopy(configuration).(map[string]any)
 	body["technology"] = technology
 	body["connectionKey"] = key
+
+	if credential == nil {
+		return body
+	}
 
 	client, _ := body["clientConfiguration"].(map[string]any)
 	if client == nil {

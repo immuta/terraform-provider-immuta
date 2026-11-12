@@ -126,6 +126,47 @@ func TestDomainDataSourceMembership(t *testing.T) {
 	}
 }
 
+func TestRemoveCollectionDataSource(t *testing.T) {
+	t.Parallel()
+
+	server, requests := recordingServer(t, http.StatusNoContent, "")
+	client := newTestClient(t, server.URL)
+
+	if err := client.RemoveCollectionDataSource(t.Context(), "d1", "36"); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	// The endpoint the Immuta UI uses, not the documented /domain one.
+	want := []recorded{{http.MethodDelete, "/collection/d1/datasources/36", testAPIKey, nil}}
+	if !reflect.DeepEqual(*requests, want) {
+		t.Errorf("requests = %+v, want %+v", *requests, want)
+	}
+
+	before := len(*requests)
+	for name, err := range map[string]error{
+		"zero id":        client.RemoveCollectionDataSource(t.Context(), "d1", "0"),
+		"non-numeric id": client.RemoveCollectionDataSource(t.Context(), "d1", "orders"),
+		"no domain":      client.RemoveCollectionDataSource(t.Context(), " ", "36"),
+	} {
+		if err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if len(*requests) != before {
+		t.Error("invalid arguments reached the API")
+	}
+}
+
+func TestRemoveCollectionDataSourceNotFound(t *testing.T) {
+	t.Parallel()
+
+	server, _ := recordingServer(t, http.StatusNotFound, `{"message": "Data source not found in domain"}`)
+
+	if err := newTestClient(t, server.URL).RemoveCollectionDataSource(t.Context(), "d1", "36"); !IsNotFound(err) {
+		t.Errorf("error = %v, want not found", err)
+	}
+}
+
 func TestDataSourceErrors(t *testing.T) {
 	t.Parallel()
 

@@ -271,6 +271,8 @@ func (p *immutaProvider) Resources(_ context.Context) []func() resource.Resource
 		NewDataObjectTagResource,
 		NewCustomDataObjectResource,
 		NewCustomSecurableAccessGroupResource,
+		NewAssetReviewFlowResource,
+		NewDataProductReviewFlowResource,
 	}
 }
 

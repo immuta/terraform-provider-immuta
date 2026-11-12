@@ -660,6 +660,8 @@ func TestConnectionResourceCustomFromExampleFile(t *testing.T) {
 				ImportStateId:                        "snowflake-access",
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "connection_key",
+				// An import records Immuta's configuration as JSON, not the file text.
+				ImportStateVerifyIgnore: []string{"configuration"},
 			},
 		},
 	})

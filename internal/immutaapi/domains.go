@@ -198,6 +198,40 @@ func (c *Client) DeleteDomain(ctx context.Context, domainID string) error {
 	return err
 }
 
+// DomainDeleteImpact is what DELETE /domain/{id}?dryRun=true reports is
+// still in a domain. Immuta does not delete a domain while any of it is.
+type DomainDeleteImpact struct {
+	DataSourceCount   int `json:"dataSourceCount"`
+	GlobalPolicyCount int `json:"globalPolicyCount"`
+	IdentifierCount   int `json:"identifierCount"`
+	DataProductCount  int `json:"dataProductCount"`
+}
+
+// PreviewDomainDelete reports what still blocks deleting a domain, with the
+// documented dryRun query parameter of DELETE /domain/{id}, which deletes
+// nothing.
+func (c *Client) PreviewDomainDelete(ctx context.Context, domainID string) (DomainDeleteImpact, error) {
+	if err := validateDomainID(domainID); err != nil {
+		return DomainDeleteImpact{}, err
+	}
+
+	body, err := c.do(ctx, request{
+		method:   http.MethodDelete,
+		segments: []string{"domain", domainID},
+		query:    url.Values{"dryRun": {"true"}},
+	})
+	if err != nil {
+		return DomainDeleteImpact{}, err
+	}
+
+	var impact DomainDeleteImpact
+	if err := json.Unmarshal(body, &impact); err != nil {
+		return DomainDeleteImpact{}, fmt.Errorf("decoding domain delete dry run: %w", err)
+	}
+
+	return impact, nil
+}
+
 // ListDomains lists domains with GET /domain.
 func (c *Client) ListDomains(ctx context.Context, opts ListDomainsOptions) ([]Domain, error) {
 	body, err := c.do(ctx, request{

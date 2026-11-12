@@ -214,7 +214,7 @@ func (r *customDataObjectResource) Delete(ctx context.Context, req resource.Dele
 		if immutaapi.IsNotFound(err) {
 			return
 		}
-		resp.Diagnostics.Append(customDataObjectErrorDiagnostic(fmt.Sprintf("Unable to delete the Immuta data object %s", id), err))
+		resp.Diagnostics.Append(r.deleteErrorDiagnostic(ctx, state, err))
 
 		return
 	}
@@ -242,6 +242,46 @@ func (r *customDataObjectResource) Delete(ctx context.Context, req resource.Dele
 			return
 		}
 	}
+}
+
+// deleteErrorDiagnostic explains a refused delete. Immuta refuses, with a
+// 409, to delete a securable that still has a bound access group or access
+// it authored (group memberships it added for granted users), and a folder
+// holding such a securable. For a securable, the bound group is looked up so
+// that the diagnostic names it.
+func (r *customDataObjectResource) deleteErrorDiagnostic(ctx context.Context, state customDataObjectResourceModel, err error) diag.Diagnostic {
+	key, id := state.ConnectionKey.ValueString(), state.ID.ValueString()
+	summary := fmt.Sprintf("Unable to delete the Immuta data object %s", id)
+
+	var apiErr *immutaapi.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusConflict {
+		return customDataObjectErrorDiagnostic(summary, err)
+	}
+
+	const remedy = "Remove the binding, by destroying its immuta_custom_securable_access_group resource or in the " +
+		"Immuta UI, and revoke the access granted through the securable, then apply again."
+
+	if state.Type.ValueString() != immutaapi.DataObjectTypeSecurable {
+		return diag.NewErrorDiagnostic(summary, err.Error()+"\n\nImmuta does not delete a folder while a securable in "+
+			"it still has a bound access group or access Immuta authored. "+remedy)
+	}
+
+	endpoint := fmt.Sprintf("GET /api/connections/%s/dataObjects/%s/accessGroup", key, id)
+	bound, getErr := r.client.GetAccessGroup(ctx, key, id)
+
+	var finding string
+	switch {
+	case getErr != nil:
+		finding = fmt.Sprintf("Looking up the bound group with %s failed too: %s.", endpoint, getErr)
+	case bound.Bound():
+		finding = fmt.Sprintf("%s reports %s still bound to the securable.", endpoint, bound)
+	default:
+		finding = fmt.Sprintf("%s reports no bound group, so access Immuta authored for users granted the "+
+			"securable is probably what remains.", endpoint)
+	}
+
+	return diag.NewErrorDiagnostic(summary, err.Error()+"\n\nImmuta does not delete a securable while it still has a "+
+		"bound access group or access Immuta authored. "+finding+" "+remedy)
 }
 
 // ImportState imports a data object by <connection_key>/<data object id>.

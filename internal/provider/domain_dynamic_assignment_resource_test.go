@@ -327,6 +327,12 @@ func TestDomainDynamicAssignmentResourceWaitsForDataSources(t *testing.T) {
 					resource.TestCheckResourceAttr("data.immuta_domain_data_sources.test", "ids.0", "4"),
 				),
 			},
+			{
+				// Immuta does not delete a domain that still has data sources:
+				// remove them, then destroy everything.
+				PreConfig: server.RemoveDataSourcesFromDomains,
+				Config:    providerConfig(server.URL()),
+			},
 		},
 	})
 }
@@ -348,6 +354,50 @@ func TestDomainDynamicAssignmentResourceTimesOutWaitingForDataSources(t *testing
 			{
 				Config:      providerConfig(server.URL()) + domainDynamicAssignmentConfig(`["Sales"]`),
 				ExpectError: regexp.MustCompile(`reported\s+2\s+data\s+sources\s+in\s+the\s+domain,\s+but\s+after\s+\S+\s+the\s+domain\s+lists\s+0`),
+			},
+			{
+				// Immuta does not delete a domain that still has data sources:
+				// remove them, then destroy everything.
+				PreConfig: server.RemoveDataSourcesFromDomains,
+				Config:    providerConfig(server.URL()),
+			},
+		},
+	})
+}
+
+// Destroying a dynamic assignment leaves its data sources in the domain, so
+// destroying the domain in the same apply fails. The diagnostic reports what
+// the delete dry run counts, and why the data sources are still there.
+func TestDomainResourceDeleteReportsWhatIsLeft(t *testing.T) {
+	skipWithoutTerraformCLI(t)
+	clearProviderEnvironment(t)
+	fastDomainAssignmentPolling(t, 100*time.Millisecond)
+
+	server := testutil.NewDomainServer()
+	t.Cleanup(server.Close)
+	tagDataSources(server)
+
+	provider := providerConfig(server.URL())
+
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(),
+		CheckDestroy:             checkAllDomainsDestroyed(server),
+		Steps: []resource.TestStep{
+			{
+				Config: provider + domainDynamicAssignmentConfig(`["Sales"]`),
+			},
+			{
+				// The assignment and the domain are destroyed in one apply.
+				Config: provider,
+				ExpectError: regexp.MustCompile(`There\s+is\s+2\s+resource\s+left\s+in\s+the\s+domain[\s\S]*` +
+					`\?dryRun=true\s+reports:\s+2\s+data\s+sources\s+\(dataSourceCount\),\s+0\s+global\s+policies\s+` +
+					`\(globalPolicyCount\),\s+0\s+identifiers\s+\(identifierCount\),\s+0\s+data\s+products\s+\(dataProductCount\)` +
+					`[\s\S]*added\s+by\s+a\s+dynamic\s+assignment[\s\S]*stay\s+in\s+the\s+domain`),
+			},
+			{
+				// Once the data sources are removed, the domain is deleted.
+				PreConfig: server.RemoveDataSourcesFromDomains,
+				Config:    provider,
 			},
 		},
 	})

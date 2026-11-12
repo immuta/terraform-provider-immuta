@@ -46,6 +46,7 @@ type DataProductServer struct {
 	domainSources map[string][]DomainDataSource
 	users         []RequestAppUser
 	requestForms  []RequestForm
+	assets        map[string]*storedAsset
 }
 
 // RequestForm is a request form served by the Request app
@@ -74,6 +75,8 @@ type DomainDataSource struct {
 type storedDataProduct struct {
 	definition map[string]any
 	sourceIDs  []string
+	// reviewFlows are graphs saved with the review flow endpoint.
+	reviewFlows map[string]map[string]any
 }
 
 // NewDataProductServer starts a fake Request app API.
@@ -239,6 +242,11 @@ func (s *DataProductServer) handle(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if len(segments) >= 4 && segments[0] == "marketplace" && segments[1] == "api" && segments[2] == "asset" {
+		s.handleAssetReviewFlows(w, r, segments[3:])
+
+		return
+	}
 	if len(segments) < 3 || segments[0] != "marketplace" || segments[1] != "api" || segments[2] != "data-product" {
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "unknown endpoint"})
 
@@ -261,6 +269,9 @@ func (s *DataProductServer) handle(w http.ResponseWriter, r *http.Request) {
 		default:
 			writeJSON(w, http.StatusNotFound, map[string]string{"message": "unknown endpoint"})
 		}
+	case len(rest) == 3 && rest[1] == "review-flows" && r.Method == http.MethodPut:
+		id, _ := url.PathUnescape(rest[0])
+		s.putDataProductReviewFlow(w, r, id, rest[2])
 	case len(rest) == 2 && rest[1] == "datasources" && r.Method == http.MethodPut:
 		id, _ := url.PathUnescape(rest[0])
 		s.replaceDataSources(w, r, id)
@@ -505,7 +516,8 @@ func (s *DataProductServer) delete(w http.ResponseWriter, id string) {
 }
 
 // renderDataProduct returns a data product as the API does: without data sources,
-// review flows or request form ids, and with fields of its own.
+// legacy review flows or request form ids, with the review flow graphs saved
+// with the review flow endpoint, and with fields of its own.
 func renderDataProduct(product *storedDataProduct) map[string]any {
 	encoded, _ := json.Marshal(product.definition)
 
@@ -519,6 +531,9 @@ func renderDataProduct(product *storedDataProduct) map[string]any {
 	rendered["createdAt"] = "2026-10-07T00:00:00Z"
 	rendered["updatedAt"] = "2026-10-07T00:00:00Z"
 	rendered["stats"] = map[string]any{"dataSourceCount": len(product.sourceIDs)}
+	for requestType, graph := range product.reviewFlows {
+		rendered[reviewFlowFields[requestType]] = renderReviewFlowGraph(graph)
+	}
 
 	return rendered
 }

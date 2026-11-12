@@ -57,7 +57,9 @@ func (r *customSecurableAccessGroupResource) Schema(_ context.Context, _ resourc
 			"a subscription policy or an approved access request grants a user the securable, Immuta adds the user to " +
 			"the group through the identity connection, and removes them when access is revoked. The binding itself " +
 			"grants nobody access.\n\n" +
-			"A securable has at most one bound group, and a group can be bound to only one securable.",
+			"A securable has at most one bound group, and a group can be bound to only one securable.\n\n" +
+			"Destroying this resource unbinds the group. Immuta does not delete a securable while a group is bound, " +
+			"so Terraform destroys the binding before the securable it references.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -105,8 +107,9 @@ func (r *customSecurableAccessGroupResource) Create(ctx context.Context, req res
 	key, securableID, groupID := plan.ConnectionKey.ValueString(), plan.SecurableID.ValueString(), plan.IdentityGroupID.ValueString()
 	id := customSecurableAccessGroupID(key, securableID)
 
-	// An existing binding is not adopted silently, since destroying this
-	// resource would then remove a binding Terraform did not make.
+	// A binding to the same group is taken over, for example after the
+	// resource was removed from the state. A binding to another group is not
+	// replaced silently: it may have been made outside Terraform.
 	bound, err := r.client.GetAccessGroup(ctx, key, securableID)
 	if err != nil {
 		resp.Diagnostics.Append(customDataObjectErrorDiagnostic(
@@ -114,10 +117,19 @@ func (r *customSecurableAccessGroupResource) Create(ctx context.Context, req res
 
 		return
 	}
-	if bound != "" {
-		resp.Diagnostics.AddError("The Immuta securable already has an access group",
-			fmt.Sprintf("The identity group %s is already bound to the securable %s. Import the binding to manage it "+
-				"with Terraform:\n\n  terraform import <resource address> %s", bound, securableID, id))
+	switch bound.IdentityGroupID {
+	case "":
+	case groupID:
+		tflog.Debug(ctx, "The identity group is already bound to the Immuta securable", map[string]any{"id": id})
+		plan.ID = types.StringValue(id)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+
+		return
+	default:
+		resp.Diagnostics.AddError("The Immuta securable already has another access group",
+			fmt.Sprintf("Immuta reports %s bound to the securable %s, so Terraform does not bind the identity group "+
+				"%s instead. Import the binding with terraform import using the ID %s and change identity_group_id, "+
+				"or remove the binding in the Immuta UI, then apply again.", bound, securableID, groupID, id))
 
 		return
 	}
@@ -153,7 +165,7 @@ func (r *customSecurableAccessGroupResource) Read(ctx context.Context, req resou
 
 		return
 	}
-	if bound == "" {
+	if !bound.Bound() {
 		tflog.Debug(ctx, "No identity group bound to the Immuta securable any more, removing it from state", map[string]any{"id": state.ID.ValueString()})
 		resp.State.RemoveResource(ctx)
 
@@ -161,7 +173,7 @@ func (r *customSecurableAccessGroupResource) Read(ctx context.Context, req resou
 	}
 
 	state.ID = types.StringValue(customSecurableAccessGroupID(key, securableID))
-	state.IdentityGroupID = types.StringValue(bound)
+	state.IdentityGroupID = types.StringValue(bound.IdentityGroupID)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
@@ -179,8 +191,8 @@ func (r *customSecurableAccessGroupResource) Update(ctx context.Context, req res
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-// Delete unbinds the group. A securable that is already gone needs nothing
-// more. Unbinding does not by itself remove users from the group.
+// Delete unbinds the group. A binding, or securable, that Immuta no longer
+// finds is already gone.
 func (r *customSecurableAccessGroupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state customSecurableAccessGroupResourceModel
 
@@ -189,12 +201,24 @@ func (r *customSecurableAccessGroupResource) Delete(ctx context.Context, req res
 		return
 	}
 
-	key, securableID, groupID := state.ConnectionKey.ValueString(), state.SecurableID.ValueString(), state.IdentityGroupID.ValueString()
+	key, securableID := state.ConnectionKey.ValueString(), state.SecurableID.ValueString()
 
-	if err := r.client.UnbindAccessGroup(ctx, key, securableID, groupID); err != nil && !immutaapi.IsNotFound(err) {
-		resp.Diagnostics.Append(accessGroupErrorDiagnostic(
-			fmt.Sprintf("Unable to unbind the identity group %s from the Immuta securable %s", groupID, securableID), err))
+	err := r.client.UnbindAccessGroup(ctx, key, securableID)
+	if immutaapi.IsNotFound(err) {
+		tflog.Debug(ctx, "The Immuta access group binding is already gone", map[string]any{"id": state.ID.ValueString()})
+
+		return
 	}
+	if err != nil {
+		resp.Diagnostics.Append(customDataObjectErrorDiagnostic(
+			fmt.Sprintf("Unable to unbind the identity group %s from the Immuta securable %s",
+				state.IdentityGroupID.ValueString(), securableID), err))
+
+		return
+	}
+
+	tflog.Debug(ctx, "Unbound an identity group from an Immuta Custom securable",
+		map[string]any{"connection_key": key, "securable_id": securableID, "identity_group_id": state.IdentityGroupID.ValueString()})
 }
 
 // ImportState imports a binding by <connection_key>/<securable_id>; the

@@ -13,31 +13,52 @@ import (
 // The access group endpoint binds an identity group, crawled by an Entra or
 // Okta connection, to a Custom securable:
 //
-//	PUT /api/connections/{connectionKey}/dataObjects/{securableId}/accessGroup
-//	GET /api/connections/{connectionKey}/dataObjects/{securableId}/accessGroup
+//	PUT    /api/connections/{connectionKey}/dataObjects/{securableId}/accessGroup
+//	GET    /api/connections/{connectionKey}/dataObjects/{securableId}/accessGroup
+//	DELETE /api/connections/{connectionKey}/dataObjects/{securableId}/accessGroup
 //
-// It is not in the published connections API reference yet. The bind body,
-// {"action": "bind", "identityGroupId": ...}, comes from the UAC Custom
-// connection guidance. The unbind body and the GET response shape are
-// assumptions, kept here so that they are easy to correct.
-const (
-	accessGroupActionBind   = "bind"
-	accessGroupActionUnbind = "unbind"
-)
+// It is not in the published connections API reference yet. PUT with the
+// "bind" action binds a group and DELETE unbinds it. While a group is bound,
+// Immuta refuses to delete the securable.
+const accessGroupActionBind = "bind"
+
+// AccessGroup is the identity group bound to a Custom securable, as
+// GET .../accessGroup returns it:
+//
+//	{"state": "LIVE", "identityConnectionKey": "entra-prod", "identityGroupId": "..."}
+//
+// The zero value means no group is bound.
+type AccessGroup struct {
+	IdentityGroupID       string `json:"identityGroupId"`
+	IdentityConnectionKey string `json:"identityConnectionKey"`
+	State                 string `json:"state"`
+}
+
+// Bound reports whether a group is bound.
+func (g AccessGroup) Bound() bool {
+	return g.IdentityGroupID != ""
+}
+
+// String describes the binding for messages.
+func (g AccessGroup) String() string {
+	if !g.Bound() {
+		return "no identity group"
+	}
+
+	description := "the identity group " + g.IdentityGroupID
+	if g.IdentityConnectionKey != "" {
+		description += " of the connection " + g.IdentityConnectionKey
+	}
+	if g.State != "" {
+		description += " (state " + g.State + ")"
+	}
+
+	return description
+}
 
 // BindAccessGroup binds an identity group data object to a Custom securable.
 // The group must not be bound to another securable.
 func (c *Client) BindAccessGroup(ctx context.Context, connectionKey, securableID, identityGroupID string) error {
-	return c.putAccessGroup(ctx, connectionKey, securableID, accessGroupActionBind, identityGroupID)
-}
-
-// UnbindAccessGroup removes the binding of an identity group from a Custom
-// securable.
-func (c *Client) UnbindAccessGroup(ctx context.Context, connectionKey, securableID, identityGroupID string) error {
-	return c.putAccessGroup(ctx, connectionKey, securableID, accessGroupActionUnbind, identityGroupID)
-}
-
-func (c *Client) putAccessGroup(ctx context.Context, connectionKey, securableID, action, identityGroupID string) error {
 	if err := validateDataObjectRef(connectionKey, securableID); err != nil {
 		return err
 	}
@@ -48,18 +69,34 @@ func (c *Client) putAccessGroup(ctx context.Context, connectionKey, securableID,
 	_, err := c.do(ctx, request{
 		method:   http.MethodPut,
 		segments: []string{"api", "connections", connectionKey, "dataObjects", securableID, "accessGroup"},
-		body:     map[string]any{"action": action, "identityGroupId": identityGroupID},
+		body:     map[string]any{"action": accessGroupActionBind, "identityGroupId": identityGroupID},
 	})
 
 	return err
 }
 
-// GetAccessGroup returns the id of the identity group data object bound to a
-// Custom securable, or "" when none is bound. It returns an error matching
-// ErrNotFound when the securable does not exist.
-func (c *Client) GetAccessGroup(ctx context.Context, connectionKey, securableID string) (string, error) {
+// UnbindAccessGroup removes the identity group bound to a Custom securable.
+// It returns an error matching ErrNotFound when Immuta reports the securable,
+// or its binding, as not found.
+func (c *Client) UnbindAccessGroup(ctx context.Context, connectionKey, securableID string) error {
 	if err := validateDataObjectRef(connectionKey, securableID); err != nil {
-		return "", err
+		return err
+	}
+
+	_, err := c.do(ctx, request{
+		method:   http.MethodDelete,
+		segments: []string{"api", "connections", connectionKey, "dataObjects", securableID, "accessGroup"},
+	})
+
+	return err
+}
+
+// GetAccessGroup returns the identity group bound to a Custom securable; its
+// zero value when none is bound. It returns an error matching ErrNotFound
+// when the securable does not exist.
+func (c *Client) GetAccessGroup(ctx context.Context, connectionKey, securableID string) (AccessGroup, error) {
+	if err := validateDataObjectRef(connectionKey, securableID); err != nil {
+		return AccessGroup{}, err
 	}
 
 	body, err := c.do(ctx, request{
@@ -67,56 +104,50 @@ func (c *Client) GetAccessGroup(ctx context.Context, connectionKey, securableID 
 		segments: []string{"api", "connections", connectionKey, "dataObjects", securableID, "accessGroup"},
 	})
 	if err != nil {
-		return "", err
+		return AccessGroup{}, err
 	}
 
 	return decodeAccessGroup(body)
 }
 
-// decodeAccessGroup reads the bound identity group id from either
-// {"identityGroupId": "..."} or {"identityGroup": {"id": "..."}}. An empty
-// body, or either field set to null, means no group is bound. Any other
-// response is an error rather than "unbound", so that a response this
-// client does not understand never makes Terraform forget a binding.
-func decodeAccessGroup(body []byte) (string, error) {
+// decodeAccessGroup reads an access group response. An empty body, null, or
+// a null identityGroupId means no group is bound. A response without an
+// identityGroupId field is an error rather than "unbound", so that a
+// response this client does not understand never makes Terraform forget a
+// binding.
+func decodeAccessGroup(body []byte) (AccessGroup, error) {
 	trimmed := bytes.TrimSpace(body)
 	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
-		return "", nil
+		return AccessGroup{}, nil
 	}
 
-	var decoded map[string]json.RawMessage
-	if err := json.Unmarshal(trimmed, &decoded); err != nil {
-		return "", fmt.Errorf("decoding access group: %w", err)
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &fields); err != nil {
+		return AccessGroup{}, fmt.Errorf("decoding access group: %w", err)
+	}
+	if _, ok := fields["identityGroupId"]; !ok {
+		return AccessGroup{}, errors.New("decoding access group: the API response has no identityGroupId")
 	}
 
-	if raw, ok := decoded["identityGroupId"]; ok {
-		var id *string
-		if err := json.Unmarshal(raw, &id); err != nil {
-			return "", fmt.Errorf("decoding access group: identityGroupId: %w", err)
-		}
-		if id == nil {
-			return "", nil
-		}
-
-		return *id, nil
+	var group struct {
+		IdentityGroupID       *string `json:"identityGroupId"`
+		IdentityConnectionKey *string `json:"identityConnectionKey"`
+		State                 *string `json:"state"`
+	}
+	if err := json.Unmarshal(trimmed, &group); err != nil {
+		return AccessGroup{}, fmt.Errorf("decoding access group: %w", err)
+	}
+	if group.IdentityGroupID == nil || *group.IdentityGroupID == "" {
+		return AccessGroup{}, nil
 	}
 
-	if raw, ok := decoded["identityGroup"]; ok {
-		var group *struct {
-			ID string `json:"id"`
-		}
-		if err := json.Unmarshal(raw, &group); err != nil {
-			return "", fmt.Errorf("decoding access group: identityGroup: %w", err)
-		}
-		if group == nil {
-			return "", nil
-		}
-		if group.ID == "" {
-			return "", errors.New("decoding access group: identityGroup has no id")
-		}
-
-		return group.ID, nil
+	result := AccessGroup{IdentityGroupID: *group.IdentityGroupID}
+	if group.IdentityConnectionKey != nil {
+		result.IdentityConnectionKey = *group.IdentityConnectionKey
+	}
+	if group.State != nil {
+		result.State = *group.State
 	}
 
-	return "", errors.New("decoding access group: the API response has neither identityGroupId nor identityGroup")
+	return result, nil
 }

@@ -204,6 +204,12 @@ func TestDomainDataSourceAssignmentResourceErrors(t *testing.T) {
 					Config:      provider + domainDataSourceAssignmentConfig,
 					ExpectError: regexp.MustCompile(`(?s)already\s+in\s+the\s+Immuta\s+domain.*terraform\s+import`),
 				},
+				{
+					// Immuta does not delete a domain that still has data sources:
+					// remove them, then destroy everything.
+					PreConfig: server.RemoveDataSourcesFromDomains,
+					Config:    providerConfig(server.URL()),
+				},
 			},
 		})
 	})
@@ -224,6 +230,12 @@ resource "immuta_domain_dynamic_assignment" "test" {
 				{
 					Config:      dynamic + strings.TrimPrefix(domainDataSourceAssignmentConfig, testDomainConfig),
 					ExpectError: regexp.MustCompile(`(?s)manual\s+assignment.*immuta_domain_dynamic_assignment`),
+				},
+				{
+					// Immuta does not delete a domain that still has data sources:
+					// remove them, then destroy everything.
+					PreConfig: server.RemoveDataSourcesFromDomains,
+					Config:    providerConfig(server.URL()),
 				},
 			},
 		})
@@ -249,6 +261,11 @@ resource "immuta_domain_dynamic_assignment" "test" {
 			Steps: []resource.TestStep{{
 				Config:      providerConfig(server.URL()) + domainDataSourceAssignmentConfig,
 				ExpectError: regexp.MustCompile(`(?s)Timed\s+out.*background\s+job\s+e48e15a0`),
+			}, {
+				// Immuta does not delete a domain that still has data sources:
+				// remove them, then destroy everything.
+				PreConfig: server.RemoveDataSourcesFromDomains,
+				Config:    providerConfig(server.URL()),
 			}},
 		})
 	})

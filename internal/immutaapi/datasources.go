@@ -174,6 +174,27 @@ func (c *Client) RemoveDomainDataSource(ctx context.Context, domainID, dataSourc
 	return err
 }
 
+// RemoveCollectionDataSource removes a data source from a domain with
+// DELETE /collection/{domainId}/datasources/{dataSourceId}, which the Immuta
+// UI uses and which answers 204. It is not in the published Domains API
+// reference. Unlike RemoveDomainDataSource, it is not limited to domains with
+// manual assignment, so it can empty a domain before it is deleted.
+func (c *Client) RemoveCollectionDataSource(ctx context.Context, domainID, dataSourceID string) error {
+	if err := validateDomainID(domainID); err != nil {
+		return err
+	}
+	if _, err := parseDataSourceID(dataSourceID); err != nil {
+		return err
+	}
+
+	_, err := c.do(ctx, request{
+		method:   http.MethodDelete,
+		segments: []string{"collection", domainID, "datasources", dataSourceID},
+	})
+
+	return err
+}
+
 // parseDataSourceID checks that a data source id is the documented integer.
 func parseDataSourceID(id string) (int64, error) {
 	number, err := strconv.ParseInt(id, 10, 64)

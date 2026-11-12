@@ -61,8 +61,10 @@ resource "immuta_domain_dynamic_assignment" "denmark" {
   shows the tags and lists as many data sources as Immuta reported, so that
   [`immuta_domain_data_sources`](../data-sources/domain_data_sources.md) reads
   them in the same apply.
-- **Destroy sets the domain back to manual assignment.** What happens to the
-  data sources already in the domain is Immuta's decision.
+- **Destroy sets the domain back to manual assignment.** The data sources the
+  assignment added stay in the domain, and Immuta then refuses to delete the
+  domain. To destroy the domain in the same apply, set
+  [`force_destroy = true`](domain.md) on it and apply that first.
 - **Drift is detected:** a domain switched to manual, or given other tags, in
   Immuta shows as a change and is put back on the next apply. A deleted domain
   removes the assignment from state.

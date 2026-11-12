@@ -47,6 +47,10 @@ output "research_domain_id" {
   source added to the domain. Set with the documented
   `PUT /domain/{domainId}/settings`. When omitted, the provider leaves the
   setting as it is in Immuta and reports its value.
+- `force_destroy` (Boolean) When `true`, destroying the domain first removes
+  every data source from it, then deletes the domain. Defaults to `false`.
+  See [Destructive behaviour](#destructive-behaviour). Not sent to Immuta, and
+  not set on import.
 
 ### Read-Only
 
@@ -74,9 +78,10 @@ To assign data sources by tag, use
 - **Name changes update in place.** The documented `PUT /domain/{domainId}`
   endpoint changes the name and description, so renaming a domain does not
   destroy it or its contents.
-- **Deleting a non-empty domain fails.** Immuta rejects the delete when the
-  domain still contains data sources, policies, data products or identifiers.
-  The provider surfaces that conflict rather than hiding it.
+- **Deleting a non-empty domain fails** unless `force_destroy` is set. Immuta
+  rejects the delete when the domain still contains data sources, policies,
+  data products or identifiers. The provider surfaces that conflict, with what
+  `DELETE /domain/{domainId}?dryRun=true` counts, rather than hiding it.
 - **Remote changes show up as drift.** A description edited in the Immuta UI
   produces a diff on the next plan. A domain deleted outside Terraform is
   removed from state and planned for recreation.
@@ -88,8 +93,43 @@ To assign data sources by tag, use
 
 Destroying an `immuta_domain` deletes the domain in Immuta. Immuta refuses the
 delete while the domain still contains data sources, policies, data products
-or identifiers, so a destroy fails rather than silently removing governed
-objects. Detach or delete the contents first.
+or identifiers, so by default a destroy fails rather than silently removing
+governed objects. Detach or delete the contents first.
+
+Data sources added by an
+[`immuta_domain_dynamic_assignment`](domain_dynamic_assignment.md) stay in the
+domain when the assignment is destroyed, so destroying both in one apply fails
+without `force_destroy`.
+
+### `force_destroy`
+
+```terraform
+resource "immuta_domain" "research" {
+  name          = "Research"
+  force_destroy = true
+}
+```
+
+With `force_destroy = true`, destroying the domain:
+
+1. lists its data sources with `GET /domain/{domainId}/datasources`,
+2. removes each one from the domain with
+   `DELETE /collection/{domainId}/datasources/{dataSourceId}`, the endpoint the
+   Immuta UI uses (it is not in the published Domains API reference),
+3. deletes the domain.
+
+- It removes **every** data source in the domain, however it was added,
+  including any managed by `immuta_domain_data_source_assignment`. The data
+  sources themselves are not deleted.
+- It does not remove global policies, identifiers or data products: Immuta
+  still refuses the delete while any are left.
+- A data source that is already gone from the domain is skipped.
+- If removing a data source fails, the provider stops, does not delete the
+  domain, and reports which data sources it already removed. Applying again
+  continues with the rest.
+- Terraform deletes with the attribute values in state, so set
+  `force_destroy = true` and apply it before the destroy that relies on it.
+  Changing it only updates the state.
 
 Deleting a domain also removes the domain-scoped permissions and the policy
 authoring delegation that depend on it. Plan domain removal in a sandbox

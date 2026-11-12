@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
@@ -67,6 +69,76 @@ resource "immuta_domain" "test" {
 					resource.TestCheckNoResourceAttr(domainResourceName, "description"),
 					testAccCheckDomainParity(t),
 				),
+			},
+		},
+	})
+}
+
+// envForceDestroyTag names a tag on at least one data source that is in no
+// domain, for TestAccDomainResourceForceDestroy.
+const envForceDestroyTag = "IMMUTA_TEST_FORCE_DESTROY_TAG"
+
+// TestAccDomainResourceForceDestroy assigns data sources to a domain by tag,
+// then destroys the assignment and the domain in one apply: with
+// force_destroy, the domain is emptied and deleted, and the data sources go
+// back to no domain.
+//
+// Besides TF_ACC, IMMUTA_HOST, IMMUTA_API_KEY and
+// IMMUTA_TEST_DOMAIN_NAME_PREFIX, it needs IMMUTA_TEST_FORCE_DESTROY_TAG.
+// Run it against a sandbox tenant, never production.
+func TestAccDomainResourceForceDestroy(t *testing.T) {
+	tag := strings.TrimSpace(os.Getenv(envForceDestroyTag))
+	if os.Getenv("TF_ACC") != "" && tag == "" {
+		t.Skipf("set %s to run the domain force_destroy acceptance test", envForceDestroyTag)
+	}
+
+	name := acctest.RandomWithPrefix(accNamePrefix(t))
+	config := fmt.Sprintf(`
+resource "immuta_domain" "test" {
+  name          = %q
+  force_destroy = true
+}
+
+resource "immuta_domain_dynamic_assignment" "test" {
+  domain_id = immuta_domain.test.id
+  tags      = [%q]
+}
+
+data "immuta_domain_data_sources" "test" {
+  domain_id = immuta_domain_dynamic_assignment.test.domain_id
+}
+`, name, tag)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testutil.RequireAccEnv(t) },
+		ProtoV6ProviderFactories: testProviderFactories(),
+		// The final destroy removes the assignment and the domain together,
+		// which fails without force_destroy.
+		CheckDestroy: testAccCheckDomainsDestroyed(t),
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(domainResourceName, "force_destroy", "true"),
+					resource.TestCheckResourceAttrWith("data.immuta_domain_data_sources.test", "ids.#", func(value string) error {
+						if count, err := strconv.Atoi(value); err != nil || count == 0 {
+							return fmt.Errorf("no data sources tagged %q were added to the domain: check %s", tag, envForceDestroyTag)
+						}
+
+						return nil
+					}),
+				),
+			},
+			{
+				Config:   config,
+				PlanOnly: true,
+			},
+			{
+				ResourceName:      domainResourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				// Not in Immuta, so not set on import.
+				ImportStateVerifyIgnore: []string{"force_destroy"},
 			},
 		},
 	})

@@ -50,6 +50,7 @@ type domainResourceModel struct {
 	CreatedBy      types.Int64  `tfsdk:"created_by"`
 	CreatedAt      types.String `tfsdk:"created_at"`
 	UpdatedAt      types.String `tfsdk:"updated_at"`
+	ForceDestroy   types.Bool   `tfsdk:"force_destroy"`
 }
 
 func (r *domainResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -123,6 +124,16 @@ func (r *domainResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"updated_at": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Timestamp of when the domain was last updated.",
+			},
+			// No default, so that state written before the attribute existed,
+			// and imported state, hold null and plan no change. Null means false.
+			"force_destroy": schema.BoolAttribute{
+				Optional: true,
+				MarkdownDescription: "When `true`, destroying the domain first removes every data source from it, with " +
+					"`DELETE /collection/{domainId}/datasources/{dataSourceId}`, then deletes the domain. The data sources " +
+					"themselves are not deleted. Global policies, identifiers and data products are not removed. Defaults " +
+					"to `false`, in which case Immuta refuses to delete a domain that still has data sources. It must be " +
+					"applied before the destroy that relies on it. Not sent to Immuta, and not set on import.",
 			},
 		},
 	}
@@ -311,6 +322,16 @@ func (r *domainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 
 	domainID := state.ID.ValueString()
+	// Null, in state written before force_destroy existed, means false.
+	forceDestroy := state.ForceDestroy.ValueBool()
+
+	if forceDestroy {
+		exists, diags := r.removeDataSources(ctx, domainID)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() || !exists {
+			return
+		}
+	}
 
 	if err := r.client.DeleteDomain(ctx, domainID); err != nil {
 		if immutaapi.IsNotFound(err) {
@@ -318,11 +339,93 @@ func (r *domainResource) Delete(ctx context.Context, req resource.DeleteRequest,
 			return
 		}
 
-		resp.Diagnostics.Append(apiErrorDiagnostic(
-			fmt.Sprintf("Unable to delete the Immuta domain %s", domainID),
+		resp.Diagnostics.Append(r.deleteErrorDiagnostic(ctx, domainID, forceDestroy, err))
+	}
+}
+
+// removeDataSources empties the domain of data sources for force_destroy. It
+// stops at the first failure, so that the domain is not deleted while data
+// sources are still in it. It reports false when the domain no longer exists.
+func (r *domainResource) removeDataSources(ctx context.Context, domainID string) (bool, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
+	dataSources, err := r.client.ListDomainDataSources(ctx, domainID, "")
+	if err != nil {
+		if immutaapi.IsNotFound(err) {
+			return false, diagnostics
+		}
+		diagnostics.Append(apiErrorDiagnostic(
+			fmt.Sprintf("Unable to list the data sources of the Immuta domain %s to remove them before deleting it", domainID),
 			err,
 		))
+
+		return true, diagnostics
 	}
+
+	removed := make([]string, 0, len(dataSources))
+	for _, dataSource := range dataSources {
+		err := r.client.RemoveCollectionDataSource(ctx, domainID, dataSource.ID)
+		if err != nil && !immutaapi.IsNotFound(err) {
+			diagnostic := apiErrorDiagnostic(
+				fmt.Sprintf("Unable to remove the data source %s from the Immuta domain %s before deleting it", dataSource.ID, domainID),
+				err,
+			)
+			diagnostics.AddError(diagnostic.Summary(), diagnostic.Detail()+fmt.Sprintf("\n\nforce_destroy is set, so "+
+				"the provider removes every data source from the domain before deleting it. It removed %d of the %d "+
+				"data sources %q, then stopped; the domain was not deleted. Apply again to remove the rest.",
+				len(removed), len(dataSources), removed))
+
+			return true, diagnostics
+		}
+
+		removed = append(removed, dataSource.ID)
+		tflog.Info(ctx, "Removed a data source from the Immuta domain before deleting it", map[string]any{
+			"domain_id":      domainID,
+			"data_source_id": dataSource.ID,
+		})
+	}
+
+	return true, diagnostics
+}
+
+// deleteErrorDiagnostic explains a refused delete. Immuta refuses, with a 409,
+// to delete a domain that still holds data sources, global policies,
+// identifiers or data products; the dry run of the delete counts them.
+func (r *domainResource) deleteErrorDiagnostic(ctx context.Context, domainID string, forceDestroy bool, err error) diag.Diagnostic {
+	summary := fmt.Sprintf("Unable to delete the Immuta domain %s", domainID)
+
+	var apiErr *immutaapi.APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusConflict {
+		return apiErrorDiagnostic(summary, err)
+	}
+
+	detail := err.Error() + "\n\nImmuta does not delete a domain while anything is left in it."
+
+	impact, previewErr := r.client.PreviewDomainDelete(ctx, domainID)
+	if previewErr != nil {
+		return diag.NewErrorDiagnostic(summary, detail+" Counting what is left with "+
+			"DELETE /domain/"+domainID+"?dryRun=true failed too: "+previewErr.Error())
+	}
+
+	detail += fmt.Sprintf(" DELETE /domain/%s?dryRun=true reports: %d data sources (dataSourceCount), %d global "+
+		"policies (globalPolicyCount), %d identifiers (identifierCount), %d data products (dataProductCount).",
+		domainID, impact.DataSourceCount, impact.GlobalPolicyCount, impact.IdentifierCount, impact.DataProductCount)
+	switch {
+	case impact.DataSourceCount > 0 && forceDestroy:
+		detail += "\n\nforce_destroy removed every data source the domain listed, but Immuta still counts some. " +
+			"Immuta may still be removing them; apply again."
+	case impact.DataSourceCount > 0:
+		detail += "\n\nData sources added by a dynamic assignment (immuta_domain_dynamic_assignment) stay in the " +
+			"domain when the assignment is destroyed. Remove them from the domain, or delete them, then apply again. " +
+			"Alternatively, set force_destroy = true on the immuta_domain and apply that first: destroying the domain " +
+			"then removes its data sources from it before deleting it."
+	}
+	if impact.GlobalPolicyCount+impact.IdentifierCount+impact.DataProductCount > 0 {
+		detail += "\n\nDelete the global policies, identifiers and data products of the domain, or move them to " +
+			"another domain, then apply again."
+	}
+
+	return diag.NewErrorDiagnostic(summary, detail)
 }
 
 func (r *domainResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
