@@ -5,8 +5,9 @@ data "immuta_data_object" "analysts_group" {
   path           = ["IMMUTA_SNOWFLAKE_ANALYST"]
 }
 
+# A securable in a Custom connection, registered with immuta_connection.
 resource "immuta_custom_data_object" "analyst_access" {
-  connection_key = immuta_connection.snowflake_access.connection_key
+  connection_key = "snowflake-access"
   name           = "Analyst Access"
   type           = "SECURABLE"
 }

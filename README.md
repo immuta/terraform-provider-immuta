@@ -188,6 +188,9 @@ manages memberships of.
 | [`immuta_connection`](docs/resources/connection.md) | Registers a connection from a YAML configuration document |
 | [`immuta_data_object_settings`](docs/resources/data_object_settings.md) | Turns data policy on or off for a registered catalog, schema or table |
 | [`immuta_data_object_tag`](docs/resources/data_object_tag.md) | Applies a tag to a registered data object and leaves its other tags alone |
+| [`immuta_custom_data_object`](docs/resources/custom_data_object.md) | Creates a folder or securable in a `Custom` connection |
+| [`immuta_custom_securable_access_group`](docs/resources/custom_securable_access_group.md) | Binds an Entra or Okta group to a `Custom` securable, so Immuta manages its members |
+| [`immuta_asset_review_flow`](docs/resources/asset_review_flow.md) | Overrides the dynamic review flow of a data object for one request type |
 | [`immuta_data_object`](docs/data-sources/data_object.md) (data) | Looks up a registered data object by its path |
 | [`immuta_data_source`](docs/data-sources/data_source.md) (data) | Looks up a data source by name, or by connection and path |
 
@@ -204,6 +207,7 @@ request access.
 | Resource / data source | What it does |
 | --- | --- |
 | [`immuta_data_product`](docs/resources/data_product.md) | Creates a data product |
+| [`immuta_data_product_review_flow`](docs/resources/data_product_review_flow.md) | Sets the dynamic review flow of a data product for one request type |
 | [`immuta_request_form`](docs/data-sources/request_form.md) (data) | Looks up a request form for a data product |
 
 ### Not yet supported
