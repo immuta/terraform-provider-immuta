@@ -15,7 +15,7 @@ GIT_COMMIT=$(git rev-parse --short=7 HEAD)
 
 # Determine the arch/os combos we're building for
 GOOS_LIST=${GOOS_LIST:-linux darwin}
-GOARCH_LIST=${GOARCH_LIST:-"amd64"}
+GOARCH_LIST=${GOARCH_LIST:-"amd64 arm64"}
 
 # Cleanup old builds
 echo "==> Removing old directory..."
@@ -31,7 +31,7 @@ export CGO_ENABLED=0
 # We may want in the future to get rid of development flags using:
 #   -s: to omit the symbol table and debug information
 #   -w: to omit the DWARF symbol table
-LD_FLAGS="-X github.com/immuta/terraform-provider-immuta/version.ProviderVersion=${GIT_COMMIT} $LD_FLAGS"
+LD_FLAGS="-X main.version=${VERSION:-${GIT_COMMIT}} $LD_FLAGS"
 
 # Build!
 echo "==> Building..."
@@ -39,7 +39,6 @@ for GOOS_ITEM in $GOOS_LIST; do
   for GOARCH_ITEM in $GOARCH_LIST; do
     echo " --> ${GOOS_ITEM}_${GOARCH_ITEM}"
     GOOS=${GOOS_ITEM} GOARCH=${GOARCH_ITEM} go build \
-      -mod vendor \
       -ldflags "${LD_FLAGS}" \
       -o "pkg/${GOOS_ITEM}_${GOARCH_ITEM}/terraform-provider-immuta" \
       .

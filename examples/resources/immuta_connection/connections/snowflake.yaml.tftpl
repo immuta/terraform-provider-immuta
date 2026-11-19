@@ -1,0 +1,27 @@
+# Snowflake connection captured in example_queries.md, without its credential,
+# which is set with the credential attribute. technology (Snowflake) and
+# connectionKey (ewqew) are set with attributes too.
+clientConfiguration:
+  host: "2"
+  port: 323
+  warehouse: "eqw"
+  role: "eqw"
+  immutaSystemDatabase: "ewqewq"
+policyConfiguration:
+  impersonation:
+    enabled: false
+  excludeUserGroupPattern:
+    - "ewqeqw"
+auditConfiguration:
+  enabled: true
+dataObjectSync:
+  enabled: true
+  startTime: 0
+  schedule: "EVERY_24_HOURS"
+syncOnCreate: true
+dataObjectDefaults:
+  syncPolicy: false
+  # Immuta user profile ID, filled in by templatefile() from data.immuta_user.
+  owners:
+    - type: "USER"
+      id: ${owner_id}

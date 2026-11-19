@@ -1,0 +1,14 @@
+name: Advanced Entitlement
+policyKey: subscription entitlements advanced boolean
+type: subscription
+actions:
+  type: entitlements
+  advanced: "@isInGroups('Engineers', 'Founders') AND @hasAttribute('Auth1', 'Super Secret')"
+  automaticSubscription: true
+  allowDiscovery: false
+  description: Some description here
+circumstances:
+  - type: columnRegex
+    regex: ssn
+    caseInsensitive: false
+staged: false

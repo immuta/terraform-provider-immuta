@@ -1,0 +1,20 @@
+name: Entitlement
+policyKey: subscription entitlements
+type: subscription
+actions:
+  type: entitlements
+  entitlements:
+    operator: any
+    groups:
+      - Employee
+    attributes:
+      - name: auth1
+        value: SOMETHING_ELSE
+  automaticSubscription: true
+  allowDiscovery: false
+  description: Some description here
+circumstances:
+  - type: columnRegex
+    regex: ssn
+    caseInsensitive: false
+staged: false
