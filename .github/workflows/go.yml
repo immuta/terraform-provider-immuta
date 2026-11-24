@@ -1,37 +1,53 @@
 name: Go
 
-on: [push]
+on:
+  push:
+  pull_request:
 
+permissions:
+  contents: read
+
+# The unit tests must not need Immuta credentials, so none are configured here.
 jobs:
   build:
 
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go-version: [ '1.18', '1.23.x' ]
 
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Go ${{ matrix.go-version }}
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
-      # for each go version ...
-      - name: Install dependencies
-        run: go get .
+          go-version-file: go.mod
+          cache: true
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Check that go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - name: Lint
+        run: make lint
       - name: Test with Go
-        run: go test -json > TestResults-${{ matrix.go-version }}.json
+        run: |
+          set -o pipefail
+          go test -json -timeout 10m ./... | tee TestResults.json
       - name: Upload Go test results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Go-results-${{ matrix.go-version }}
-          path: TestResults-${{ matrix.go-version }}.json
+          name: Go-results
+          path: TestResults.json
+      - name: Validate the examples
+        run: make validate-examples
       - name: Build artifacts
-        run: make && make bin
+        run: make build && make bin
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           if-no-files-found: error
-          name: releases-${{ matrix.go-version }}
+          name: releases
           overwrite: true
           path: releases/*.tar.gz

@@ -1,0 +1,16 @@
+# Okta identity connection. Its credential is set with the credential
+# attribute, and technology (Okta) and connectionKey with attributes too.
+clientConfiguration:
+  # The hostname only, without a scheme, port or path.
+  oktaDomain: "${okta_domain}"
+  # Only groups whose name starts with this prefix are crawled.
+  immutaResourcePrefix: "IMMUTA_"
+# Only the prefix filter is supported, and it takes no configuration. Both
+# keys are top-level: Immuta rejects them in clientConfiguration.
+objectSyncFilterType: "prefix"
+objectSyncFilterConfiguration: {}
+dataObjectSync:
+  enabled: true
+  startTime: 0
+  schedule: "EVERY_24_HOURS"
+syncOnCreate: true

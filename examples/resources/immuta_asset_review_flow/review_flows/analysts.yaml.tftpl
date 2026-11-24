@@ -1,0 +1,34 @@
+# Data access review flow: collect the request form, then approve members of
+# the analysts group and deny everyone else. Read with templatefile(), which
+# fills in request_form_id.
+#
+# The root and form node ids are fixed by the Request app API. Every other
+# node needs its own UUID, used by the edges.
+nodes:
+  - id: 53c03cdf-63e1-437c-9f0e-dc68b842da59
+    type: root
+  - id: a71c93f1-c8b6-4e3c-b219-9bfa22b2d38c
+    type: form
+    requestFormId: ${request_form_id}
+  - id: 6f1c2b9e-0a4d-4c55-9e3b-2d7a8f0c1b11
+    type: decision
+    expression: '@consumer.groups contains "analysts"'
+  - id: 9b2e4c7a-3d5f-4e8a-b1c6-7d8e9f0a1b22
+    type: outcome
+    outcome: approve
+  - id: 0c3f5d8b-4e6a-4f9b-82d7-8e9f0a1b2c33
+    type: outcome
+    outcome: deny
+
+edges:
+  - source: 53c03cdf-63e1-437c-9f0e-dc68b842da59
+    target: a71c93f1-c8b6-4e3c-b219-9bfa22b2d38c
+  - source: a71c93f1-c8b6-4e3c-b219-9bfa22b2d38c
+    target: 6f1c2b9e-0a4d-4c55-9e3b-2d7a8f0c1b11
+  # A decision node has a true and a false branch.
+  - source: 6f1c2b9e-0a4d-4c55-9e3b-2d7a8f0c1b11
+    target: 9b2e4c7a-3d5f-4e8a-b1c6-7d8e9f0a1b22
+    branch: true
+  - source: 6f1c2b9e-0a4d-4c55-9e3b-2d7a8f0c1b11
+    target: 0c3f5d8b-4e6a-4f9b-82d7-8e9f0a1b2c33
+    branch: false

@@ -1,21 +1,19 @@
+// terraform-provider-immuta is the Terraform provider for the documented
+// Immuta SaaS API.
 package main
 
 import (
 	"context"
 	"flag"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/immuta/terraform-provider-immuta/immuta"
 	"log"
+
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+
+	"github.com/immuta/terraform-provider-immuta/internal/provider"
 )
 
-var (
-	// these will be set by the goreleaser configuration
-	// to appropriate values for the compiled binary.
-	version string = "dev"
-
-	// goreleaser can pass other information to the main package, such as the specific commit
-	// https://goreleaser.com/cookbooks/using-main.version/
-)
+// version is set at build time with -ldflags "-X main.version=...".
+var version = "dev"
 
 func main() {
 	var debug bool
@@ -28,9 +26,7 @@ func main() {
 		Debug:   debug,
 	}
 
-	err := providerserver.Serve(context.Background(), immuta.NewProvider(version), opts)
-
-	if err != nil {
+	if err := providerserver.Serve(context.Background(), provider.New(version), opts); err != nil {
 		log.Fatal(err.Error())
 	}
 }

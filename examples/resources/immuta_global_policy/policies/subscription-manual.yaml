@@ -1,0 +1,6 @@
+name: Manual
+policyKey: subscription manual
+type: subscription
+actions:
+  type: manual
+  description: Rationale
